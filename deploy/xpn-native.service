@@ -1,0 +1,24 @@
+[Unit]
+Description=XPN native C WebSocket and TLS packet service
+After=xpn-control.service xpn-network.service
+Requires=xpn-control.service xpn-network.service
+
+[Service]
+Type=simple
+User=xpn
+Group=xpn
+ExecStart=/usr/local/bin/xpnd server 3001 /run/xpn/control.sock /xpn/vpn xpn0 --loopback
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

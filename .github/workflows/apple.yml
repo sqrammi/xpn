@@ -1,0 +1,32 @@
+name: Apple native SDK and unsigned apps
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install cmake ninja pkg-config xcodegen
+      - name: Build pinned native dependency SDKs
+        run: sh native/tools/apple-dependencies.sh
+        env:
+          XPN_DEPENDENCY_WORK: ${{ runner.temp }}/xpn-apple-deps
+      - name: Package native XCFramework
+        run: sh native/tools/package-apple.sh
+        env:
+          XPN_APPLE_SDKS: ${{ runner.temp }}/xpn-apple-deps/sdk
+      - name: Generate Xcode projects
+        run: cd clients/apple && xcodegen generate
+      - name: Typecheck and link iOS simulator app and provider
+        run: xcodebuild -project clients/apple/XPN.xcodeproj -scheme XPN-iOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/xpn-ios CODE_SIGNING_ALLOWED=NO build
+      - name: Typecheck and link macOS app and provider
+        run: xcodebuild -project clients/apple/XPN.xcodeproj -scheme XPN-macOS -sdk macosx -derivedDataPath /tmp/xpn-macos CODE_SIGNING_ALLOWED=NO build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xpn-apple-native-sdk
+          path: |
+            clients/apple/Frameworks/XPNNative.xcframework
+            clients/apple/Resources/ThirdParty

@@ -1,0 +1,28 @@
+[Unit]
+Description=XPN Node administration and enrollment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xpn
+Group=xpn
+WorkingDirectory=/opt/xpn
+EnvironmentFile=/etc/xpn.env
+ExecStart=/usr/bin/node /opt/xpn/server/main.mjs
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=xpn
+RuntimeDirectoryMode=0700
+StateDirectory=xpn
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

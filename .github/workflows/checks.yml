@@ -1,0 +1,35 @@
+name: Checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  node:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test && npm run check
+      - run: npm audit --audit-level=high
+  native:
+    # Ubuntu validation complements the local macOS native tests.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: sudo apt-get update && sudo apt-get install -y nginx libwebsockets-dev libssl-dev libcurl4-openssl-dev libjansson-dev cmake ninja-build
+      - run: cmake -S native -B /tmp/xpn-build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer'
+      - run: cmake --build /tmp/xpn-build
+      - run: ctest --test-dir /tmp/xpn-build --output-on-failure
+      - run: node server/native-integration.mjs /tmp/xpn-build/test_transport
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-debug
+          path: /tmp/xpn-build/xpnd

@@ -1,0 +1,15 @@
+node_modules/
+data/
+.env
+*.db*
+*.pem
+!clients/apple/Resources/cacert.pem
+*.key
+*.xcframework/
+clients/apple/*.xcodeproj/
+bin/
+.DS_Store
+__pycache__/
+clients/apple/Generated/
+native/deps/vcpkg_installed/
+clients/apple/Resources/ThirdParty/

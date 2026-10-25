@@ -1,0 +1,18 @@
+{
+  "name": "xpn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.13.1"
+  },
+  "scripts": {
+    "start": "node server/main.mjs",
+    "test": "node --test server/*.test.mjs",
+    "check": "node --check server/main.mjs && node --check server/app.mjs && node --check server/store.mjs && node --check server/public/app.js && node --check server/public/join.js"
+  },
+  "dependencies": {
+    "nodemailer": "10.2.1",
+    "qrcode": "1.5.4"
+  }
+}

@@ -1,0 +1,6 @@
+The cacert.pem bundle was obtained from https://curl.se/ca/cacert.pem.
+It contains public trust roots extracted from Mozilla NSS certdata.txt.
+Mozilla source and license information: https://curl.se/docs/caextract.html
+and https://www.mozilla.org/en-US/MPL/2.0/.
+The bundle's header records its source snapshot and conversion metadata.
+Review root-store updates as part of release maintenance.

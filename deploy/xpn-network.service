@@ -1,0 +1,13 @@
+[Unit]
+Description=XPN persistent TUN and forwarding rules
+After=network-online.target
+Wants=network-online.target
+Before=xpn-native.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/xpn/deploy/network.sh
+
+[Install]
+WantedBy=multi-user.target
