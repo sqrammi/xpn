@@ -15,7 +15,7 @@ Outer TLS 1.3 on TCP 443
 
 There is no UDP listener. nginx routes `/xpn/vpn` to C on loopback port 3001 and `/xpn/` to Node on loopback port 3000. Prefixes are configurable consistently in Node's `PUBLIC_URL`, nginx locations, and the native server path. `Sec-WebSocket-Protocol` is `xpn-v1`. WebSocket compression is disabled; OpenSSL TLS bytes are opaque payloads, with no dependency on WebSocket message boundaries. nginx terminates the outer TLS connection, but not the inner TLS session.
 
-The server rejects browser Origins on the tunnel endpoint; the administration UI does not carry packets. Outer HTTPS/WSS certificates are validated normally by native clients. Inner TLS uses PSK-only authentication and has no certificate fallback.
+The server rejects browser Origins on the tunnel endpoint; the administration UI does not carry packets. Enrollment HTTPS always uses normal CA and hostname verification. VPN WSS uses either normal verification (profile v1) or mandatory exact SHA-256 leaf certificate pins (profile v2). A pinned profile may independently override TLS SNI while preserving the endpoint's DNS/TCP destination and HTTP Host. Pinned mode enforces certificate validity dates and proof of private-key possession but replaces CA/name trust; it never falls back after a pin mismatch. Custom SNI without a pin is rejected. See [configuration and rotation](PINNING.md). Inner TLS uses PSK-only authentication and has no certificate fallback. The wire protocol remains v1 for either profile version.
 
 ## Cryptography
 
@@ -29,7 +29,7 @@ TLS traffic keys update after approximately 1 GiB sent and every 20 seconds for 
 
 Admin authentication is a high-entropy bearer token held only in the page's JavaScript memory. API authorization does not use cookies. Cross-origin requests are rejected. Deploy the admin console behind your existing access-control layer if you require SSO/MFA. The console supports a single administrator token in this version.
 
-Creating a user/device allocates an address from `10.77.0.2`–`10.77.0.254`, creates its PSK, and stores the PSK encrypted with AES-256-GCM under the deployment's master key. The SQLite DB stores policies and audit events. Keep DB/WAL files and the master key protected separately; backup recovery requires the master key. The native process obtains an active credential snapshot through a protected Unix socket. The socket and its parent are accessible only to the local `xpn` service identity. Loopback admin access alone cannot retrieve native secrets without the admin token and a valid invitation.
+Creating a user/device allocates an address from `10.77.0.2`–`10.77.0.254`, creates its PSK, and stores the PSK encrypted with AES-256-GCM under the deployment's master key. The SQLite DB stores policies and audit events. Keep DB/WAL files and the master key protected separately; backup recovery requires the master key. The native process obtains an active credential snapshot through a protected Unix socket. The control socket belongs to `xpn:xpn` with mode `0660` inside a `0710` directory. The separate `xpn-packet` service receives supplementary group `xpn` for socket access; it cannot modify the directory or access the `0700` database directory. Loopback admin access alone cannot retrieve native secrets without the admin token and a valid invitation.
 
 An invitation is `https://host/xpn/join#token=<random-32-bytes>&key=<random-32-bytes>`. The wrapping key is held in the fragment, encoded into the QR, and never sent to the enrollment HTTP endpoint. Node stores only the token hash and an AES-256-GCM encrypted profile. Enrollment atomically consumes the token and returns ciphertext; the client decrypts locally, validates its structure, and saves its PSK. Tokens expire after 15 minutes, are single-use, and are invalidated on revocation, key rotation, or issuing another invitation. Redeeming through the browser downloads a private JSON credential file rather than a native installation.
 
@@ -57,3 +57,7 @@ TCP-over-TCP head-of-line blocking remains possible on lossy paths. The inner an
 - [OpenSSL external PSK callbacks](https://docs.openssl.org/3.0/man3/SSL_CTX_set_psk_client_callback/)
 - [libwebsockets threading and writable callbacks](https://github.com/warmcat/libwebsockets/blob/main/READMEs/README.coding.md)
 - [Apple Network Extensions entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension)
+
+## Server privileges
+
+The root network helper exits after configuring TUN/routing. Node runs as `xpn`, and all native connection handlers run as `xpn-packet` before authentication. The Linux server executable rejects privileged launches and sets `no_new_privs` before library initialization or threads. Connections share one process and its credential cache; this is not per-client memory isolation. See [privilege separation](PRIVILEGE-SEPARATION.md) for installation, migration and checks.

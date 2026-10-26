@@ -5,8 +5,10 @@ Requires=xpn-control.service xpn-network.service
 
 [Service]
 Type=simple
-User=xpn
-Group=xpn
+User=xpn-packet
+Group=xpn-packet
+# Traverse /run/xpn and connect to its socket; cannot write the directory or DB.
+SupplementaryGroups=xpn
 ExecStart=/usr/local/bin/xpnd server 3001 /run/xpn/control.sock /xpn/vpn xpn0 --loopback
 Restart=on-failure
 RestartSec=3
@@ -19,6 +21,17 @@ DevicePolicy=closed
 DeviceAllow=/dev/net/tun rw
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 CapabilityBoundingSet=
+AmbientCapabilities=
+LimitCORE=0
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+InaccessiblePaths=-/var/lib/xpn -/etc/xpn.env
 
 [Install]
 WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: XPN
+Source: https://github.com/sqrammi/xpn
+Comment:
+ LOCAL PACKAGING DRAFT. The upstream author has not selected a distribution
+ license. Before any public upload, replace this notice with the author's
+ chosen license and copyright information, and audit vendored dependencies.
+ This file does not grant a license to redistribute XPN.
+
+Files: *
+Copyright: XPN authors; attribution to be finalized by the maintainer
+License: not-yet-selected
+ Public distribution is not prepared by this packaging draft.
+
+Files: vendor/node_modules/*
+Copyright: See each dependency's bundled copyright and license files
+License: dependency-specific
+ Exact npm sources and their license files are preserved in vendor/node_modules
+ and installed in /usr/share/xpn/node_modules. Generate a full per-dependency
+ copyright manifest before publishing; this placeholder is for local tests.

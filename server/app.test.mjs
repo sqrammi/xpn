@@ -17,6 +17,14 @@ test('API authenticates admins, handles subpaths, sends QR email, and revokes', 
     response = await request('/api/users', { name: '<script>x</script>', email: 'alice@example.test' });
     assert.equal(response.status, 201); const created = await response.json();
     assert.ok(created.invitation.qr.startsWith('data:image/png;base64,'));
+    const trustPath = '/api/users/' + created.user.id + '/transport';
+    const trust = { sni: 'app.jeffhansen.com', certificatePins: ['ab'.repeat(32)] };
+    assert.equal((await request(trustPath, trust, { Authorization: '' })).status, 401);
+    assert.equal((await request(trustPath, { sni: trust.sni })).status, 400);
+    response = await request(trustPath, trust); assert.equal(response.status, 201);
+    assert.ok((await response.json()).invitation.qr);
+    assert.equal(store.credential(created.user.id).version, 2);
+    assert.equal(store.credential(created.user.id).sni, trust.sni);
     assert.equal((await request('/api/users/' + created.user.id + '/email', {})).status, 200);
     assert.equal(messages.length, 1); assert.equal(messages[0].to, 'alice@example.test');
     assert.ok(messages[0].attachments[0].content.length > 100);

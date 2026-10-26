@@ -65,6 +65,9 @@ static int context(xpn *x) {
     info.port=x->server ? x->port : CONTEXT_PORT_NO_LISTEN;
     info.iface=x->server ? "127.0.0.1" : NULL;
     info.protocols=protocols; info.user=x; info.options=LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    /* Every new connection must present a certificate for the configured pin. */
+    info.options |= LWS_SERVER_OPTION_DISABLE_TLS_SESSION_CACHE;
+    if (!x->server && *x->config.sni) info.ssl_info_event_mask=SSL_CB_HANDSHAKE_START;
 #ifdef __linux__
     /* Linux launcher installs IPv4 endpoint exceptions before full routes. */
     info.options |= LWS_SERVER_OPTION_DISABLE_IPV6;
@@ -139,6 +142,40 @@ static void drain(xpn *x) {
 int xpn_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t length) {
     xpn *x=lws_context_user(lws_get_context(wsi)); peer *p=user;
     switch(reason) {
+    case LWS_CALLBACK_SSL_INFO: {
+        const struct lws_ssl_info *event=in;
+        if (!x->server && *x->config.sni && event && (event->where & SSL_CB_HANDSHAKE_START)) {
+            /* LWS couples its default SNI to HTTP Host. Override the SSL object
+             * before ClientHello while retaining endpoint DNS and HTTP Host. */
+            SSL *outer=lws_get_ssl(wsi);
+            x->sni_applied=outer && SSL_set_tlsext_host_name(outer,x->config.sni)==1;
+            if (!x->sni_applied) return -1;
+        }
+        return 0;
+    }
+    case LWS_CALLBACK_OPENSSL_PERFORM_SERVER_CERT_VERIFICATION: {
+        if (x->server || !x->config.certificate_pin_count) return 0;
+        X509_STORE_CTX *verification=user;
+        /* Check the leaf even when OpenSSL is currently visiting an issuer. */
+        if (!verification || (*x->config.sni && !x->sni_applied) || !certificate_matches(&x->config,X509_STORE_CTX_get0_cert(verification))) {
+            if (verification) X509_STORE_CTX_set_error(verification,X509_V_ERR_APPLICATION_VERIFICATION);
+            return 1;
+        }
+        /* Only an exact, provisioned, currently valid pin can override CA/name
+         * errors. Never set LCCSCF_ALLOW_INSECURE / ALLOW_SELFSIGNED flags. */
+        X509_STORE_CTX_set_error(verification,X509_V_OK);
+        return 0;
+    }
+    case LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH: {
+        if (!x->config.certificate_pin_count) return 0;
+        SSL *outer=lws_get_ssl(wsi);
+        X509 *leaf=outer ? SSL_get1_peer_certificate(outer) : NULL;
+        const char *sni=outer ? SSL_get_servername(outer,TLSEXT_NAMETYPE_host_name) : NULL;
+        int accepted=certificate_matches(&x->config,leaf) &&
+            (!*x->config.sni || (x->sni_applied && sni && !strcmp(sni,x->config.sni)));
+        X509_free(leaf);
+        return accepted ? 0 : -1;
+    }
     case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION: {
         char path[2048],origin[256];
         if (!x->server) return 0;
@@ -210,7 +247,8 @@ int xpn_run(xpn *x) {
         struct lws_client_connect_info info; memset(&info,0,sizeof(info));
         info.context=x->context; info.address=x->host; info.port=x->port; info.path=x->path;
         info.host=x->host; info.protocol="xpn-v1"; info.local_protocol_name="xpn-v1";
-        info.ssl_connection=LCCSCF_USE_SSL; /* Trust and hostname checks remain enabled. */
+        info.ssl_connection=LCCSCF_USE_SSL;
+        if (x->config.certificate_pin_count) info.ssl_connection |= LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK;
         info.pwsi=&x->client_wsi;
         if (!lws_client_connect_via_info(&info)) { atomic_store(&x->stop,1); x->result=-1; }
     }

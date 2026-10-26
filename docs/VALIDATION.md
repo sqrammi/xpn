@@ -4,9 +4,12 @@ Date: 2026-10-25. Host: Apple Silicon macOS development machine.
 
 ## Passed locally
 
-- Seven Node tests: unique keys, encrypted storage/enrollment, invitation replacement/expiry/single use, revocation, key rotation, route/mode validation, API authorization/origins, URL prefixes, QR email construction via a stub, production startup, private Unix socket permissions and DB permissions.
+- Ten Node tests: unique keys, encrypted storage/enrollment, invitation replacement/expiry/single use, revocation, key rotation, route/mode validation, API authorization/origins, URL prefixes, QR email construction via a stub, production startup, private Unix socket permissions and DB permissions, plus SNI/pin validation, defaults, v2 profile enrollment and existing-device trust updates.
 - JavaScript syntax checks, Python launcher compilation, shell syntax checks; npm audit reported zero vulnerabilities.
 - Native C library compilation with warnings as errors, AddressSanitizer and UndefinedBehaviorSanitizer; in-memory mutual TLS-PSK handshake, wrong-key rejection, framing, source spoofing rejection and split-route enforcement.
+- Certificate unit tests: exact leaf matching, replacement certificates using the same key, old/new rotation pins, expired and future certificates, malformed SNI/pins and profile-version downgrade rejection.
+- Real nginx pinning cases: custom SNI `app.jeffhansen.com` selects an untrusted self-signed certificate for `certificate.example.invalid`, while HTTP Host remains `localhost`; matching pins succeed, wrong pins fail before HTTP upgrade even with otherwise trusted certificates, the second rotation pin succeeds, and pinned/default-SNI and legacy CA verification work.
+- Custom SNI plus matching pin also passes with the inner ML-KEM hybrid handshake. Browser smoke test with a temporary in-memory database verifies missing-pin rejection, saving existing-device trust, fresh QR generation and persisted editor values.
 - Real nginx integration in fast PSK and ML-KEM hybrid modes: trusted HTTPS enrollment, Node-to-C encrypted profile interoperability, WSS upgrade under `/xpn/vpn`, inner TLS mutual authentication, IPv4 packet round trips, credential refresh and active-session revocation.
 - An idle hybrid connection remained usable after 25 seconds with nginx's proxy read timeout set to 23 seconds, exercising TLS KeyUpdate keepalives.
 - Swift app/provider typechecking for macOS and iOS simulator, XcodeGen generation, and unsigned macOS app/provider linking against the C library and locally installed dependencies.
@@ -31,6 +34,7 @@ cmake -S native -B /tmp/xpn-build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/xpn-build
 ctest --test-dir /tmp/xpn-build --output-on-failure
 node server/native-integration.mjs /tmp/xpn-build/test_transport
+XPN_TEST_PINNING=sni node server/native-integration.mjs /tmp/xpn-build/test_transport
 XPN_TEST_MODE=hybrid XPN_TEST_IDLE_SECONDS=25 node server/native-integration.mjs /tmp/xpn-build/test_transport
 ```
 
@@ -43,5 +47,16 @@ The hybrid command requires OpenSSL 3.5+. `OPENSSL_BIN` and `NGINX_BIN` can sele
 - macOS 14 runtime compatibility of a properly cross-built release. The local link check used development libraries targeting newer macOS releases and emitted deployment-target warnings.
 - End-to-end DNS and IPv6 leak tests, WAN throughput, multiple simultaneous clients, one-hour reconnect behavior, mobile sleep/roaming and failover.
 - Independent security review and fuzzing of the complete deployment. Sanitizers and functional tests are useful evidence, not a security audit.
+
+## Local build and packaging helpers
+
+- Local XcodeGen overlay generated successfully in a temporary directory with all four expected bundle identifiers, team setting, automatic signing and shared Keychain group. No signing account was accessed.
+- Noble and Resolute source preparation completed with locked npm downloads and install scripts disabled. Their upstream `.orig.tar.xz` archives had identical hashes; per-series Debian metadata differed as intended. Private state, Git metadata and Apple SDK artifacts were excluded.
+- Five mocked network lifecycle tests passed: starting replaces only the XPN table, stopping removes only the XPN table/interface, repeated stop is harmless, unknown commands change nothing, and new TUN interfaces belong to `xpn-packet`. No host networking was altered.
+- Shell/Python syntax and Debian rules dry-run checks passed. These do not validate a Linux `.deb` build or installation; no Ubuntu VM is attached to this task. Full local Apple dependency builds, signed device runs, Debian package builds and a PPA upload remain unperformed.
+
+## Server privilege separation follow-up
+
+The Linux executable now checks identities/capabilities and locks down privilege acquisition before initialization. The native unit uses a separate `xpn-packet` account, with group-only control socket access and no database/environment-file access. Linux-only CTest and explicit root CI cases cover root/saved-root/group/capability rejection and restriction inheritance. Those Linux C changes have **not** been compiled or run on this macOS host; systemd, TUN access and connected clients require verification on Ubuntu using `docs/PRIVILEGE-SEPARATION.md`. No change has been deployed to alta.
 
 The Git repository was initialized locally. No remote repository, cloud deployment, live SMTP email or GitHub workflow dispatch was performed.

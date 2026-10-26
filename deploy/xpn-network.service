@@ -8,6 +8,7 @@ Before=xpn-native.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/opt/xpn/deploy/network.sh
+ExecStop=/opt/xpn/deploy/network.sh stop
 
 [Install]
 WantedBy=multi-user.target

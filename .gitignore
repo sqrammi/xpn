@@ -13,3 +13,5 @@ __pycache__/
 clients/apple/Generated/
 native/deps/vcpkg_installed/
 clients/apple/Resources/ThirdParty/
+build/
+clients/apple/project.local.yml

@@ -1,0 +1,29 @@
+Source: xpn
+Section: net
+Priority: optional
+Maintainer: XPN local builder <builder@localhost>
+Build-Depends: debhelper-compat (= 13), cmake, ninja-build, pkg-config,
+ libssl-dev (>= 3.0), libwebsockets-dev (>= 4.3), libjansson-dev (>= 2.13),
+ libcurl4-openssl-dev (>= 7.85)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/sqrammi/xpn
+
+Package: xpn-client
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, python3, iproute2, nftables,
+ systemd-resolved, ca-certificates
+Recommends: zbar-tools
+Description: XPN native TLS/WebSocket VPN client
+ Native C client with Python enrollment and routing launcher, QR camera
+ enrollment, pinned server certificates, and full or split IPv4 tunneling.
+
+Package: xpn-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nodejs (>= 24.13.1),
+ adduser, iproute2, nftables, procps, ca-certificates
+Recommends: nginx
+Description: XPN native VPN server and Node administration service
+ Native C packet service and Node administration, encrypted QR enrollment,
+ certificate policy and optional SMTP invitations. Services require explicit
+ local configuration and are not enabled or started during installation.

@@ -45,16 +45,59 @@ int decode64(const char *s, unsigned char *out, size_t cap) {
     OPENSSL_cleanse(decoded, padded); free(decoded); free(tmp); return length;
 }
 static int field(json_t *j, const char *key, char *out, size_t size) {
-    const char *value = json_string_value(json_object_get(j, key));
-    if (!value || strlen(value) >= size) return -1;
+    json_t *item = json_object_get(j, key);
+    const char *value = json_string_value(item);
+    if (!value || strlen(value) >= size || json_string_length(item) != strlen(value)) return -1;
     memcpy(out, value, strlen(value) + 1); return 0;
+}
+static int hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+static int transport_options(json_t *j, profile *p, json_int_t version) {
+    if (json_object_get(j,"sni") && field(j,"sni",p->sni,sizeof(p->sni))) return -1;
+    if (*p->sni) {
+        struct in_addr ip;
+        if (inet_pton(AF_INET,p->sni,&ip)==1) return -1;
+        size_t label=0;
+        for (size_t i=0;;i++) {
+            unsigned char c=(unsigned char)p->sni[i];
+            if (!c || c=='.') {
+                if (!label || label>63 || p->sni[i-1]=='-') return -1;
+                label=0; if (!c) break;
+            } else {
+                if (!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-') || (!label && c=='-')) return -1;
+                label++;
+            }
+        }
+    }
+    json_t *pins=json_object_get(j,"certificatePins");
+    if (pins) {
+        if (!json_is_array(pins) || json_array_size(pins)>XPN_MAX_CERTIFICATE_PINS) return -1;
+        for (size_t i=0;i<json_array_size(pins);i++) {
+            json_t *item=json_array_get(pins,i); const char *pin=json_string_value(item);
+            if (!pin || json_string_length(item)!=64 || strlen(pin)!=64) return -1;
+            for (unsigned k=0;k<32;k++) {
+                int hi=hex_digit(pin[k*2]),lo=hex_digit(pin[k*2+1]);
+                if (hi<0 || lo<0) return -1;
+                p->certificate_pins[i][k]=(unsigned char)((hi<<4)|lo);
+            }
+            p->certificate_pin_count++;
+        }
+    }
+    /* v2 requires a provisioned pin; v1 may never silently carry pin settings. */
+    if (version==2) return p->certificate_pin_count ? 0 : -1;
+    return *p->sni || p->certificate_pin_count ? -1 : 0;
 }
 int profile_parse(const char *text, profile *p) {
     memset(p, 0, sizeof(*p));
     json_error_t err; json_t *j = json_loads(text, JSON_REJECT_DUPLICATES, &err);
     if (!j) return -1;
     int ok = -1; char key[64], mode[16];
-    if (json_integer_value(json_object_get(j, "version")) != 1 || field(j,"id",p->id,sizeof(p->id)) || strlen(p->id) != 36 || field(j,"address",p->address,sizeof(p->address)) || field(j,"key",key,sizeof(key)) || decode64(key,p->key,32) != 32 || field(j,"mode",mode,sizeof(mode))) goto done;
+    json_t *version_item=json_object_get(j,"version"); json_int_t version=json_integer_value(version_item);
+    if (!json_is_integer(version_item) || (version!=1 && version!=2) || transport_options(j,p,version) || field(j,"id",p->id,sizeof(p->id)) || strlen(p->id) != 36 || field(j,"address",p->address,sizeof(p->address)) || field(j,"key",key,sizeof(key)) || decode64(key,p->key,32) != 32 || field(j,"mode",mode,sizeof(mode))) goto done;
     for (size_t i = 0; i < 36; i++) if (!((p->id[i] >= 'a' && p->id[i] <= 'f') || (p->id[i] >= '0' && p->id[i] <= '9') || p->id[i] == '-')) goto done;
     if (strcmp(mode,"psk") && strcmp(mode,"hybrid")) goto done;
     p->hybrid = !strcmp(mode,"hybrid");

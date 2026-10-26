@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
 #include "xpn.h"
+#include "privilege.h"
 #include <linux/if_tun.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -50,6 +51,12 @@ static char *read_profile(const char *path) {
     if(n>XPN_PROFILE_MAX) { free(text); return NULL; } return text;
 }
 int main(int argc,char **argv) {
+    /* A supervisor must select the unprivileged server identity BEFORE exec.
+     * Do this before curl/OpenSSL, TUN, control snapshots and worker threads. */
+    if (argc>1 && !strcmp(argv[1],"server")) {
+        char error[256];
+        if (xpn_server_restrict(error,sizeof(error))) { fprintf(stderr,"%s\n",error); return 1; }
+    }
     if(xpn_global_init()) return 1;
     if(argc==4 && !strcmp(argv[1],"enroll")) {
         char error[256], invitation[4098]={0}; const char *uri=argv[2];

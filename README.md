@@ -2,18 +2,28 @@
 
 TLS-only VPN implementation with a Node administration service, a **C/OpenSSL/libwebsockets** packet service, Linux TUN client, and SwiftUI macOS/iOS Network Extension client sources. Administration and VPN traffic share an nginx HTTPS virtual host, including deployment under a URL prefix. There is no Rust or Go implementation.
 
-**Status:** initial implementation, not a validated production release. After local C builds were explicitly authorized, the C library passed sanitizer tests and real nginx/WSS integration tests in both PSK and ML-KEM hybrid modes. Seven Node tests pass. The unsigned macOS app/provider build and link, and both iOS Swift targets typecheck. No Linux TUN/routing or signed Apple device test has run. The full portable Apple dependency SDK workflow still needs a successful CI run. See [Apple integration requirements](clients/apple/README.md), [validation results](docs/VALIDATION.md), and [protocol/security boundaries](docs/PROTOCOL.md).
+**Status:** initial implementation, not a validated production release. After local C builds were explicitly authorized, the C library passed sanitizer tests and real nginx/WSS integration tests in both PSK and ML-KEM hybrid modes. Ten Node tests pass. The unsigned macOS app/provider build and link, and both iOS Swift targets typecheck. No Linux TUN/routing or signed Apple device test has run. The full portable Apple dependency SDK workflow still needs a successful CI run. See [Apple integration requirements](clients/apple/README.md), [validation results](docs/VALIDATION.md), and [protocol/security boundaries](docs/PROTOCOL.md).
 
 ## Included
 
 - Per-device user creation, automatic 256-bit keys, full/split IPv4 policies, DNS selection, revocation and key rotation.
 - One-use, 15-minute encrypted QR enrollment; optional SMTP delivery of the QR image.
+- Exact SHA-256 certificate pinning with independent TLS SNI on all native clients; configure new or existing devices in the console. See [pinning, custom SNI and certificate rotation](docs/PINNING.md).
 - TLS 1.3 PSK mutual authentication and ChaCha20-Poly1305 inside WSS, independent of nginx's TLS termination. Fast PSK mode is the default; optional PSK + ML-KEM requires OpenSSL 3.5+.
 - Bounded native packet queues, source/policy validation, revocation polling and Linux routing/NAT deployment files.
+- Root-only network setup exits before serving clients; separate unprivileged Node and packet accounts, with privileged native server launches rejected. See [privilege separation](docs/PRIVILEGE-SEPARATION.md).
 - Linux camera scanning with `zbarcam`, transactional route setup, full-mode DNS setup and IPv6 leak prevention.
 - macOS/iOS camera scanning, JSON import, shared Keychain credentials, full/split route configuration and packet tunnel provider sources.
 
 The nginx WebSocket transport requires native userspace processing; this implementation does not claim OpenVPN DCO compatibility or kernel crypto offload. PSK protection depends on trusted QR/key delivery. The fast mode already uses the requested lightweight cipher. ML-KEM changes handshake work rather than steady-state packet encryption.
+
+## Build and test locally first
+
+- [Deploy from source on alta.jeffhansen.com using its existing nginx certificate](docs/ALTA-DEPLOYMENT.md)
+- [macOS and iOS: Xcode setup, native framework, signing and first run](docs/APPLE-LOCAL.md)
+- [Ubuntu Noble/Resolute: separate client/server packages, local deployment and testing, then PPA preparation](docs/LOCAL-TESTING.md)
+
+The Debian recipe is a local packaging draft. It has not yet been built or installed on Ubuntu. Server installation requires Node 24.13.1+; publication also needs finalized licensing and dependency review.
 
 ## Run the Node checks
 
@@ -42,14 +52,14 @@ ctest --test-dir /tmp/xpn-release --output-on-failure
 sudo cmake --install /tmp/xpn-release
 ```
 
-Ubuntu 24.04's OpenSSL supports the default fast PSK mode. Hybrid mode needs a vetted OpenSSL 3.5+ build and corresponding libwebsockets build, on server and clients. The Apple packaging script is also CI-only.
+Ubuntu 24.04's OpenSSL supports the default fast PSK mode. Hybrid mode needs a vetted OpenSSL 3.5+ build and corresponding libwebsockets build, on server and clients. Local Apple dependency/framework builds are supported; see the step-by-step guide below.
 
 ## Deploy on Ubuntu / AWS
 
 Review and adapt the included configurations to the existing host before enabling services. This section contains deployment instructions; no AWS resources have been created or changed.
 
 1. Install Node 24.13.1+, nginx, `iproute2`, `nftables`, and the native runtime dependencies. Install the tested release `xpnd` binary at `/usr/local/bin/xpnd`. Place this source tree at `/opt/xpn` and run `npm ci --omit=dev --ignore-scripts` there.
-2. Create the local service identity with `sudo useradd --system --home /var/lib/xpn --shell /usr/sbin/nologin xpn`. Keep application source owned by your deployment account/root, not writable by `xpn`.
+2. Create the separate control and packet identities with `sudo sh deploy/create-users.sh`. Keep application source root-owned and unwritable by either service account. See [privilege separation and migration](docs/PRIVILEGE-SEPARATION.md).
 3. Copy `deploy/xpn.env.example` to `/etc/xpn.env`, mode **0600**, owned by root. Set `PUBLIC_URL` to the final HTTPS origin and prefix. Generate separate values with `openssl rand -hex 32` for `MASTER_KEY` and `ADMIN_TOKEN`. Configure your SMTP URL/from address if desired; the backend requires TLS. Do not commit secrets.
 4. Copy the three `deploy/xpn-*.service` files to `/etc/systemd/system/`. Mark `/opt/xpn/deploy/network.sh` executable. Review `deploy/network.sh` for the actual outbound interface and existing firewall. It creates `xpn0`, enables IPv4 forwarding and manages only its own nftables table; it does not flush your other rules. Additional existing FORWARD-drop policies must also allow the VPN traffic.
 5. Adapt `deploy/nginx.conf` with your hostname/certificate. Put its `map` and rate zones in nginx's `http` context and merge the server/locations with your existing virtual host. Ensure `PUBLIC_URL`, nginx's prefix, and `xpn-native.service`'s path agree. Keep ports 3000/3001 and the control socket private. Test configuration using `sudo nginx -t` before reloading.

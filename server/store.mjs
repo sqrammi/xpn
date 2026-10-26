@@ -14,7 +14,16 @@ export function unseal(key, value) {
   decipher.setAuthTag(data.subarray(-16));
   return JSON.parse(Buffer.concat([decipher.update(data.subarray(12, -16)), decipher.final()]));
 }
-export function policy(input) {
+export function transportSettings(input = {}) {
+  const sni = input.sni ?? '';
+  if (typeof sni !== 'string' || sni.length > 253 || (sni && (isIP(sni) || sni.split('.').some(label => !/^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i.test(label))))) throw new Error('Invalid SNI: use a DNS hostname without a port');
+  const pins = input.certificatePins ?? [];
+  if (!Array.isArray(pins) || pins.length > 4 || pins.some(pin => typeof pin !== 'string' || !(/^[a-f\d]{64}$/i.test(pin) || /^(?:[a-f\d]{2}:){31}[a-f\d]{2}$/i.test(pin)))) throw new Error('Invalid certificate pins: supply up to four SHA-256 certificate fingerprints');
+  const certificatePins = [...new Set(pins.map(pin => pin.replaceAll(':', '').toLowerCase()))];
+  if (sni && !certificatePins.length) throw new Error('Invalid SNI configuration: a certificate pin is required');
+  return { sni: sni.toLowerCase(), certificatePins };
+}
+export function policy(input, defaults = {}) {
   const mode = input.mode ?? 'psk';
   if (!['hybrid', 'psk'].includes(mode)) throw new Error('Invalid crypto mode');
   const fullTunnel = input.fullTunnel ?? true;
@@ -29,13 +38,14 @@ export function policy(input) {
   if (!fullTunnel && routes.some(r => Number(r.split('/')[1]) === 0)) throw new Error('Use full tunnel for a default route');
   const dns = input.dns ?? ['1.1.1.1'];
   if (!Array.isArray(dns) || !dns.length || dns.length > 3 || dns.some(x => typeof x !== 'string' || isIP(x) !== 4)) throw new Error('Invalid DNS servers');
-  return { mode, fullTunnel, routes, dns };
+  return { mode, fullTunnel, routes, dns, ...transportSettings({ ...defaults, ...input }) };
 }
 export class Store {
-  constructor(path, masterKey, publicURL) {
+  constructor(path, masterKey, publicURL, transportDefaults = {}) {
     this.key = Buffer.from(masterKey, 'hex');
     if (this.key.length !== 32 || !/^[a-f\d]{64}$/i.test(masterKey)) throw new Error('MASTER_KEY must be 32 bytes in hex');
     this.url = publicURL.replace(/\/$/, '');
+    this.transportDefaults = transportSettings(transportDefaults);
     this.db = new DatabaseSync(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, ip TEXT UNIQUE NOT NULL,
@@ -52,7 +62,7 @@ export class Store {
   create(input) {
     if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 80) throw new Error('Name must be 1–80 characters');
     if (input.email && (typeof input.email !== 'string' || input.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email))) throw new Error('Invalid email');
-    const p = policy(input), id = randomUUID();
+    const p = policy(input, this.transportDefaults), id = randomUUID();
     const used = new Set(this.list().map(x => x.ip));
     let ip;
     for (let i = 2; i < 255; i++) if (!used.has(`10.77.0.${i}`)) { ip = `10.77.0.${i}`; break; }
@@ -65,7 +75,9 @@ export class Store {
   credential(id) {
     const u = this.db.prepare('SELECT * FROM users WHERE id=? AND revoked=0').get(id);
     if (!u) return null;
-    return { version: 1, id, key: unseal(this.key, u.secret), address: u.ip, endpoint: this.url.replace(/^https:/, 'wss:') + '/vpn', ...JSON.parse(u.policy) };
+    const settings = JSON.parse(u.policy);
+    // Older clients reject v2 rather than silently ignoring certificate pins.
+    return { version: settings.certificatePins?.length ? 2 : 1, id, key: unseal(this.key, u.secret), address: u.ip, endpoint: this.url.replace(/^https:/, 'wss:') + '/vpn', ...settings };
   }
   invite(id) {
     const profile = this.credential(id);
@@ -101,6 +113,18 @@ export class Store {
     if (!result.changes) throw new Error('Unknown or revoked user');
     this.db.prepare('DELETE FROM invites WHERE user_id=?').run(id);
     this.audit('user.rotate', id);
+    return this.invite(id);
+  }
+  setTransport(id, input) {
+    const user = this.db.prepare('SELECT policy FROM users WHERE id=? AND revoked=0').get(id);
+    if (!user) throw new Error('Unknown or revoked user');
+    const settings = { ...JSON.parse(user.policy), ...transportSettings(input) };
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('UPDATE users SET policy=? WHERE id=?').run(JSON.stringify(settings), id);
+      this.db.prepare('DELETE FROM invites WHERE user_id=?').run(id);
+      this.audit('user.transport', id); this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     return this.invite(id);
   }
   close() { this.db.close(); }

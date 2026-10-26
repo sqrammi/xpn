@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove|deconfigure|upgrade)
+        if [ -d /run/systemd/system ]; then
+            # Updates deliberately stop the tunnel; explicit restart follows validation.
+            systemctl stop xpn-native.service xpn-control.service xpn-network.service || true
+        fi
+        ;;
+esac
+#DEBHELPER#

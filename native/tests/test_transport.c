@@ -52,7 +52,15 @@ int main(int argc,char **argv) {
     pthread_t server_thread,client_thread;
     assert(!pthread_create(&server_thread,NULL,service,server));
     client=xpn_client_new(profile,(xpn_callbacks){client_packet,client_state,NULL}); assert(client); xpn_free(profile);
-    assert(!pthread_create(&client_thread,NULL,service,client)); wait_for(&connected);
+    assert(!pthread_create(&client_thread,NULL,service,client));
+    if (getenv("XPN_TEST_EXPECT_REJECTION")) {
+        wait_for(&disconnected);
+        pthread_mutex_lock(&lock); assert(!connected && !received); pthread_mutex_unlock(&lock);
+        xpn_stop(client); xpn_stop(server); pthread_join(client_thread,NULL); pthread_join(server_thread,NULL);
+        xpn_destroy(client); xpn_destroy(server);
+        puts("REJECTED"); return 0;
+    }
+    wait_for(&connected);
     unsigned char packet[20]={0x45,0,0,20}; packet[12]=10;packet[13]=77;packet[15]=2;packet[16]=10;packet[17]=20;packet[19]=1;
     assert(xpn_send(client,packet,20)==0); wait_for(&received);
     const char *idle=getenv("XPN_TEST_IDLE_SECONDS");

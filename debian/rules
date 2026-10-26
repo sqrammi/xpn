@@ -1,0 +1,41 @@
+#!/usr/bin/make -f
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake --sourcedirectory=native --builddirectory=build-native
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON
+
+override_dh_auto_install:
+	test -f vendor/node_modules/nodemailer/package.json
+	test -f vendor/node_modules/qrcode/package.json
+	install -D -m755 build-native/xpnd debian/xpn-client/usr/lib/xpn/client/xpnd
+	install -D -m755 build-native/xpnd debian/xpn-server/usr/lib/xpn/server/xpnd
+	install -D -m755 clients/linux/xpn.py debian/xpn-client/usr/bin/xpn
+	sed -i 's|/usr/local/bin/xpnd|/usr/lib/xpn/client/xpnd|g' debian/xpn-client/usr/bin/xpn
+	install -d debian/xpn-server/usr/share/xpn/server debian/xpn-server/usr/lib/systemd/system
+	cp server/*.mjs debian/xpn-server/usr/share/xpn/server/
+	rm -f debian/xpn-server/usr/share/xpn/server/*.test.mjs debian/xpn-server/usr/share/xpn/server/native-integration.mjs
+	cp -a server/public debian/xpn-server/usr/share/xpn/server/
+	cp -a vendor/node_modules debian/xpn-server/usr/share/xpn/
+	install -m644 package.json debian/xpn-server/usr/share/xpn/
+	install -D -m755 deploy/network.sh debian/xpn-server/usr/lib/xpn/network.sh
+	for unit in deploy/xpn-*.service; do \
+	  sed -e 's|/usr/local/bin/xpnd|/usr/lib/xpn/server/xpnd|g' \
+	      -e 's|/opt/xpn/deploy/network.sh|/usr/lib/xpn/network.sh|g' \
+	      -e 's|/opt/xpn|/usr/share/xpn|g' $$unit > debian/xpn-server/usr/lib/systemd/system/$$(basename $$unit); \
+	done
+	install -D -m644 deploy/xpn.env.example debian/xpn-server/usr/share/doc/xpn-server/examples/xpn.env.example
+	install -D -m644 deploy/nginx.conf debian/xpn-server/usr/share/doc/xpn-server/examples/nginx.conf
+	install -m644 deploy/nginx-xpn-http.conf deploy/nginx-xpn-locations.conf debian/xpn-server/usr/share/doc/xpn-server/examples/
+	install -m644 docs/*.md debian/xpn-server/usr/share/doc/xpn-server/
+	install -D -m644 docs/PINNING.md debian/xpn-client/usr/share/doc/xpn-client/PINNING.md
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+# npm's .bin symlinks are not part of the server API and need no executable wrappers.
+override_dh_fixperms:
+	rm -rf debian/xpn-server/usr/share/xpn/node_modules/.bin
+	dh_fixperms

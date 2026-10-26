@@ -10,7 +10,10 @@ const url = new URL(PUBLIC_URL);
 if (PUBLIC_URL.length > 1800 || url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !/^\/[a-zA-Z0-9/_-]*$/.test(url.pathname)) throw new Error('PUBLIC_URL must be an HTTPS origin with optional path prefix (1800 characters max)');
 if (SMTP_URL && !SMTP_FROM) throw new Error('Set SMTP_FROM when configuring SMTP_URL');
 const data = process.env.DATA_DIR || './data'; await mkdir(data, { recursive: true, mode: 0o700 });
-const store = new Store(data + '/xpn.db', MASTER_KEY, PUBLIC_URL);
+const store = new Store(data + '/xpn.db', MASTER_KEY, PUBLIC_URL, {
+  sni: process.env.VPN_SNI || '',
+  certificatePins: (process.env.VPN_CERTIFICATE_PINS || '').split(',').map(x => x.trim()).filter(Boolean),
+});
 const mailer = SMTP_URL ? nodemailer.createTransport({ ...nodemailer.createTransport(SMTP_URL).options, requireTLS: true, disableFileAccess: true, disableUrlAccess: true }, { from: SMTP_FROM }) : null;
 const app = createApp({ store, publicURL: PUBLIC_URL, adminToken: ADMIN_TOKEN, mailer });
 const socket = process.env.CONTROL_SOCKET || data + '/control.sock';

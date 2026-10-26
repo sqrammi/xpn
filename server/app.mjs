@@ -41,12 +41,13 @@ export function createApp({ store, adminToken, publicURL, mailer }) {
         if (path === base + '/api/users' && req.method === 'GET') return json(res, 200, store.list());
         let result;
         if (path === base + '/api/users' && req.method === 'POST') result = store.create(await body(req));
-        const match = path.match(new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/api/users/([a-f0-9-]+)/(invite|rotate|revoke|email)$'));
+        const match = path.match(new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/api/users/([a-f0-9-]+)/(invite|rotate|revoke|email|transport)$'));
         if (match && req.method === 'POST') {
           const [, id, action] = match;
           if (action === 'revoke') { store.revoke(id); return json(res, 200, { ok: true }); }
           if (action === 'invite') result = { invitation: store.invite(id) };
           if (action === 'rotate') result = { invitation: store.rotate(id) };
+          if (action === 'transport') result = { invitation: store.setTransport(id, await body(req)) };
           if (action === 'email') {
             if (!mailer) return json(res, 503, { error: 'SMTP is not configured' });
             const user = store.list().find(x => x.id === id && !x.revoked);

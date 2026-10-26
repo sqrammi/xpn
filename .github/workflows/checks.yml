@@ -13,6 +13,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test && npm run check
+      - run: python3 -m unittest discover -s packaging -p 'test_*.py'
       - run: npm audit --audit-level=high
   native:
     # Ubuntu validation complements the local macOS native tests.
@@ -28,7 +29,19 @@ jobs:
       - run: cmake -S native -B /tmp/xpn-build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer'
       - run: cmake --build /tmp/xpn-build
       - run: ctest --test-dir /tmp/xpn-build --output-on-failure
+      - name: Reject privileged server launches and test irreversible restrictions
+        run: |
+          sudo env ASAN_OPTIONS=detect_leaks=0 /tmp/xpn-build/test_privilege --root
+          if sudo env ASAN_OPTIONS=detect_leaks=0 /tmp/xpn-build/xpnd server 3001 /tmp/nonexistent.sock /xpn/vpn nonexistent --loopback > /tmp/xpn-root-check.log 2>&1; then
+            echo 'ERROR: root server launch succeeded'; exit 1
+          fi
+          grep -q 'Server privilege check failed' /tmp/xpn-root-check.log
       - run: node server/native-integration.mjs /tmp/xpn-build/test_transport
+      - name: Certificate pinning and custom SNI through nginx
+        run: |
+          for scenario in sni wrong-pin trusted-wrong-pin rotation pin-only; do
+            XPN_TEST_PINNING="$scenario" node server/native-integration.mjs /tmp/xpn-build/test_transport || exit 1
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux-debug

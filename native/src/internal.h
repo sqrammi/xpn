@@ -12,8 +12,12 @@
 #define XPN_QUEUE 512
 #define XPN_TLS_LIMIT (128 * 1024)
 #define XPN_SESSION_SECONDS 3600
+#define XPN_MAX_CERTIFICATE_PINS 4
 typedef struct {
     char id[37], address[16], endpoint[2048];
+    char sni[254];
+    unsigned char certificate_pins[XPN_MAX_CERTIFICATE_PINS][32];
+    unsigned certificate_pin_count;
     unsigned char key[32];
     uint32_t ip;
     int full, hybrid;
@@ -48,6 +52,7 @@ struct xpn {
     struct queued *queue;
     size_t head, count;
     int result;
+    int sni_applied;
 };
 int profile_parse(const char *, profile *);
 int packet_valid(const unsigned char *, size_t, uint32_t *, uint32_t *);
@@ -60,5 +65,6 @@ int core_send(peer *, const unsigned char *, size_t);
 void core_free(peer *);
 int xpn_callback(struct lws *, enum lws_callback_reasons, void *, void *, size_t);
 int lookup_profile(struct xpn *, const char *, profile *);
+int certificate_matches(const profile *, X509 *);
 extern char xpn_ca_file[4096];
 #endif
