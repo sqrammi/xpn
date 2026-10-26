@@ -40,7 +40,9 @@ jobs:
       - name: Non-root server with real TUN, split/full routing and NAT
         run: |
           sudo sh deploy/create-users.sh
-          sudo env PATH="$PATH" ASAN_OPTIONS=detect_leaks=0 python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
+          # The service account cannot traverse a private runner home directory.
+          # Expose this checkout read-only in a private mount namespace.
+          sudo env PATH="$PATH" ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
       - name: Certificate pinning and custom SNI through nginx
         run: |
           for scenario in sni wrong-pin trusted-wrong-pin rotation pin-only; do

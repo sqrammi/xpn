@@ -16,7 +16,7 @@ override_dh_auto_install:
 	sed -i 's|/usr/local/bin/xpnd|/usr/lib/xpn/client/xpnd|g' debian/xpn-client/usr/bin/xpn
 	install -d debian/xpn-server/usr/share/xpn/server debian/xpn-server/usr/lib/systemd/system
 	cp server/*.mjs debian/xpn-server/usr/share/xpn/server/
-	rm -f debian/xpn-server/usr/share/xpn/server/*.test.mjs debian/xpn-server/usr/share/xpn/server/native-integration.mjs
+	rm -f debian/xpn-server/usr/share/xpn/server/*.test.mjs debian/xpn-server/usr/share/xpn/server/native-integration.mjs debian/xpn-server/usr/share/xpn/server/tun-fixture.mjs
 	cp -a server/public debian/xpn-server/usr/share/xpn/server/
 	cp -a vendor/node_modules debian/xpn-server/usr/share/xpn/
 	install -m644 package.json debian/xpn-server/usr/share/xpn/

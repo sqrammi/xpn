@@ -62,10 +62,10 @@ if (name=='nft' and args[:2]==['list','table']) or (name=='ip' and args[:2]==['l
         self.assertEqual(result.returncode, 2)
         self.assertEqual(log, [])
 
-    def test_new_tun_is_owned_by_packet_identity(self):
+    def test_new_tun_is_owned_by_service_identity(self):
         result, log = self.invoke('start', False)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(('ip', ['tuntap', 'add', 'dev', 'xpn0', 'mode', 'tun', 'user', 'xpn-packet']),
+        self.assertIn(('ip', ['tuntap', 'add', 'dev', 'xpn0', 'mode', 'tun', 'user', 'xpn']),
                       [(cmd, args) for cmd, args, _ in log])
 
 

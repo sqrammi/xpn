@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Root-only Linux test in disposable network namespaces; no host routes/firewall changes.
 
-Requires the xpn/xpn-packet accounts, Node 24, nginx, iproute2, nftables, curl,
+Requires the xpn account, Node 24, nginx, iproute2, nftables, curl,
 util-linux and a built xpnd. Run: sudo env PATH="$PATH" python3
 native/tests/tun-integration.py /absolute/path/to/xpnd
 """
@@ -23,8 +23,10 @@ def run(*args, **kwargs):
     return sp.run([str(a) for a in args], text=True, **kwargs)
 
 
-def wait_for(predicate, description):
+def wait_for(predicate, description, process=None):
     for _ in range(150):
+        if process is not None and process.poll() is not None:
+            raise RuntimeError(f'{description} exited early (status {process.returncode}); see its log')
         if predicate():
             return
         time.sleep(0.1)
@@ -39,7 +41,7 @@ def main():
         os.execvp('unshare', ['unshare', '--net', '--', sys.executable, __file__, str(binary), '--isolated'])
     assert os.readlink('/proc/self/ns/net') != os.readlink('/proc/1/ns/net'), 'Must not modify host network'
     processes, handles = [], []
-    control_user, packet_user = pwd.getpwnam('xpn'), pwd.getpwnam('xpn-packet')
+    control_user = packet_user = pwd.getpwnam('xpn')
     directory = Path(tempfile.mkdtemp(prefix='xpn-tun-'))
     directory.chmod(0o755)
 
@@ -65,6 +67,13 @@ def main():
         return proc
 
     try:
+        fixture = ROOT / 'server/tun-fixture.mjs'
+        if not fixture.is_file():
+            raise RuntimeError(f'Missing tracked test fixture: {fixture}')
+        if run(*identity(control_user, control_user.pw_gid), '/usr/bin/test', '-r', fixture,
+               check=False).returncode:
+            raise RuntimeError(f'xpn cannot read {fixture}; a parent directory may be private. '
+                               'Run through native/tools/test-as-xpn.sh --root.')
         run('ip', 'link', 'set', 'lo', 'up')
         client_ns, wan_ns = namespace('client-ns'), namespace('wan-ns')
         for proc, iface, network in [(client_ns, 'test-client', '198.18.0'), (wan_ns, 'test-wan', '192.0.2')]:
@@ -82,8 +91,8 @@ def main():
         control = directory / 'control'
         control.mkdir(mode=0o710)
         os.chown(control, control_user.pw_uid, control_user.pw_gid)
-        start(identity(control_user, control_user.pw_gid) + ['node', ROOT / 'server/tun-fixture.mjs', directory], 'control')
-        wait_for(lambda: (control / 'ready').exists(), 'control fixture')
+        control_process = start(identity(control_user, control_user.pw_gid) + ['node', fixture, directory], 'control')
+        wait_for(lambda: (control / 'ready').exists(), 'control fixture', control_process)
         config = directory / 'nginx.conf'
         config.write_text(f'''pid {directory}/nginx.pid; daemon off; master_process off;
 events {{ worker_connections 128; }}
@@ -93,7 +102,7 @@ location = /xpn/vpn {{ proxy_pass http://127.0.0.1:3001; proxy_http_version 1.1;
 proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; proxy_buffering off; }} }} }}
 ''')
         start(['nginx', '-p', f'{directory}/', '-c', config], 'nginx')
-        server = start(identity(packet_user, f'{packet_user.pw_gid},{control_user.pw_gid}') +
+        server = start(identity(packet_user, packet_user.pw_gid) +
                        [binary, 'server', '3001', control / 'control.sock', '/xpn/vpn', 'xpn0', '--loopback'], 'server')
         web = directory / 'web'
         web.mkdir()
@@ -111,7 +120,7 @@ proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; pro
             route = '192.0.2.0/24' if mode == 'split' else 'default'
             ns(client_ns, 'ip', 'route', 'add', route, 'dev', 'testvpn')
             client = start(['nsenter', '-t', client_ns.pid, '-n', '--', binary, 'client', control / f'{mode}.json', 'testvpn'], mode)
-            wait_for(lambda: 'CONNECTED' in (directory / f'{mode}.log').read_text(), f'{mode} authentication')
+            wait_for(lambda: 'CONNECTED' in (directory / f'{mode}.log').read_text(), f'{mode} authentication', client)
             for task in Path(f'/proc/{server.pid}/task').iterdir():
                 status = dict(line.split(':', 1) for line in (task / 'status').read_text().splitlines() if ':' in line)
                 assert set(status['Uid'].split()) == {str(packet_user.pw_uid)}

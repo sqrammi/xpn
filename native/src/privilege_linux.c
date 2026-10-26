@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 static int refuse(char *error, size_t size, const char *reason) {
-    if (error && size) snprintf(error,size,"Server privilege check failed: %s. Start using xpn-native.service as xpn-packet.",reason);
+    if (error && size) snprintf(error,size,"Server privilege check failed: %s. Start using xpn-native.service as xpn.",reason);
     return -1;
 }
 int xpn_server_restrict(char *error, size_t size) {

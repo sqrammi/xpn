@@ -5,10 +5,8 @@ Requires=xpn-control.service xpn-network.service
 
 [Service]
 Type=simple
-User=xpn-packet
-Group=xpn-packet
-# Traverse /run/xpn and connect to its socket; cannot write the directory or DB.
-SupplementaryGroups=xpn
+User=xpn
+Group=xpn
 ExecStart=/usr/local/bin/xpnd server 3001 /run/xpn/control.sock /xpn/vpn xpn0 --loopback
 Restart=on-failure
 RestartSec=3

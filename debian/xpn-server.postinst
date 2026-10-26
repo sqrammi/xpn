@@ -3,10 +3,8 @@ set -eu
 if [ "$1" = configure ]; then
     getent group xpn >/dev/null || addgroup --system xpn
     getent passwd xpn >/dev/null || adduser --system --ingroup xpn --home /var/lib/xpn --no-create-home xpn
-    getent group xpn-packet >/dev/null || addgroup --system xpn-packet
-    getent passwd xpn-packet >/dev/null || adduser --system --ingroup xpn-packet --home /nonexistent --no-create-home xpn-packet
-    [ "$(id -u xpn)" != 0 ] && [ "$(id -u xpn-packet)" != 0 ] && [ "$(id -u xpn)" != "$(id -u xpn-packet)" ] || {
-        echo 'xpn and xpn-packet must have distinct non-root UIDs.' >&2; exit 1;
+    [ "$(id -u xpn)" != 0 ] && [ "$(id -g xpn)" != 0 ] || {
+        echo 'xpn must have a non-root UID and primary GID.' >&2; exit 1;
     }
 fi
 #DEBHELPER#

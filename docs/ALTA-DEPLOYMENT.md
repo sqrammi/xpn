@@ -1,10 +1,12 @@
 # First deployment on alta.jeffhansen.com
 
+For changes already made on the host, see the [Alta host change record](ALTA-HOST-CHANGES.md). This page is the deployment procedure.
+
 Use the existing nginx HTTPS virtual host and Let's Encrypt certificate. The console will be `https://alta.jeffhansen.com/xpn/`, enrollment under `/xpn/join`, and the native tunnel `wss://alta.jeffhansen.com/xpn/vpn`. Both upstream services listen only on loopback. No additional public port or certificate is required.
 
-These are manual deployment instructions. On 2026-10-25, the server was built and tested on alta in `/opt/xpn-test/src`, including isolated TUN/NAT tests; the live nginx configuration and persistent VPN services were not changed. The original checkout is `~/repo/xpn`. Its GitHub SSH fetch was denied, so testing used a source snapshot transferred from the Mac. Ensure the checkout contains the latest changes before installing from it.
+These are future deployment instructions. Builds/tests now run in the existing `~/repo/xpn` checkout (`/root/repo/xpn` on Alta), using one service account, `xpn`. The former `/opt/xpn-test` workspace and `xpn-packet` account were removed after successful migration. No persistent XPN services or live nginx changes have been installed.
 
-Observed host details: Ubuntu 26.04.1 Resolute, x86-64, system Node 22.22.1, existing HTTPS certificate `/etc/ssl/cert.pem`. A checksum-verified private Node 24.22.1 runtime is available at `/opt/xpn-test/tools/node-v24.22.1-linux-x64/bin/node`; the system Node was preserved. **Port 3001 is already an upstream for `/ips/`**, even though no listener was present during inspection. Reserve another native port, such as 3301, and update both the native unit and the installed nginx snippet before deploying. Recheck availability first.
+Observed host details: Ubuntu 26.04.1 Resolute, x86-64, system Node 22.22.1, existing HTTPS certificate `/etc/ssl/cert.pem`. The private Node 24.22.1 runtime is now `~/repo/xpn/build/tools/node-v24.22.1-linux-x64/`. **Port 3001 is already an upstream for `/ips/`**. This guide uses 3301 for XPN's native service instead; recheck that 3000 and 3301 are available before deploying.
 
 ## 1. Inspect prerequisites on alta
 
@@ -16,11 +18,11 @@ cat /etc/os-release
 uname -m
 node --version
 /usr/bin/node --version
-sudo ss -ltnp '( sport = :3000 or sport = :3001 )'
+sudo ss -ltnp '( sport = :3000 or sport = :3301 )'
 sudo nginx -t
 ```
 
-This recipe uses Node **24.13.1+**, OpenSSL **3.0+**, libwebsockets **4.3+** and ports 3000/3001. A shell-managed Node installation is not necessarily the `/usr/bin/node` used by systemd. If that executable is too old, arrange a suitable Node runtime before proceeding. On this shared server, choose a root-owned runtime outside `/home` (for example `/opt/node24/bin/node`) and override the control unit's `ExecStart` if needed; do not assume changing the system Node is harmless to existing applications.
+This recipe uses Node **24.13.1+**, OpenSSL **3.0+**, libwebsockets **4.3+** and ports 3000/3301. Use the private Node runtime under the checkout instead of replacing system Node. The service overrides below expose the same source/build tree through a private read-only mount; no runtime copy under `/opt` or changes to `/root` permissions are needed.
 
 If either port is occupied, choose two unused loopback ports. Change `PORT` in `/etc/xpn.env` for Node, the numeric port in the native unit's `ExecStart` for C, and the corresponding `proxy_pass` lines in the locations snippet. Do not stop another service to free a port.
 
@@ -36,36 +38,63 @@ sudo apt-get install -y build-essential cmake ninja-build pkg-config \
   libssl-dev libwebsockets-dev libjansson-dev libcurl4-openssl-dev \
   iproute2 nftables openssl curl
 cd ~/repo/xpn
+export PATH="$PWD/build/tools/node-v24.22.1-linux-x64/bin:$PATH"
 npm ci --ignore-scripts
 npm test
 npm run check
 cmake -S native -B build/native -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build/native
 ctest --test-dir build/native --output-on-failure
-node server/native-integration.mjs build/native/test_transport
-XPN_TEST_PINNING=sni node server/native-integration.mjs build/native/test_transport
-XPN_TEST_PINNING=trusted-wrong-pin node server/native-integration.mjs build/native/test_transport
+sudo sh deploy/create-users.sh
+# Alta SSH logs in as root; the wrapper starts ordinary tests as xpn.
+sh native/tools/test-as-xpn.sh node server/native-integration.mjs build/native/test_transport
+XPN_TEST_PINNING=sni sh native/tools/test-as-xpn.sh node server/native-integration.mjs build/native/test_transport
+XPN_TEST_PINNING=trusted-wrong-pin sh native/tools/test-as-xpn.sh node server/native-integration.mjs build/native/test_transport
 ```
 
 The integration tests run their own temporary nginx configuration on ephemeral loopback ports, without reloading the live nginx service or configuring TUN. Keep the initial VPN profiles in **Fast PSK** mode; hybrid requires OpenSSL 3.5+ on both server and client.
 
-## 3. Install a runtime copy outside the home directory
+## 3. Configure services to use this checkout (not yet performed)
 
-Keep `~/repo/xpn` for editing/building. The supplied services use `ProtectHome=yes` and cannot execute code from a user's home directory. Install the runtime at `/opt/xpn`, as expected by the manual service files:
+The standard service templates also support packaged installations. For this in-place source deployment, install their definitions and add the following overrides. No source, Node runtime or executable is copied out of the checkout.
 
 ```sh
-sudo sh deploy/create-users.sh
-sudo install -d -m 755 /opt/xpn /opt/xpn/deploy
-sudo cp -a server package.json package-lock.json node_modules /opt/xpn/
-sudo chown -R root:root /opt/xpn
-sudo chmod -R a+rX /opt/xpn
-sudo install -m 755 deploy/network.sh /opt/xpn/deploy/network.sh
-sudo install -m 755 build/native/xpnd /usr/local/bin/xpnd
 sudo install -m 644 deploy/xpn-control.service deploy/xpn-native.service \
   deploy/xpn-network.service /etc/systemd/system/
+sudo install -d /etc/systemd/system/xpn-control.service.d \
+  /etc/systemd/system/xpn-native.service.d /etc/systemd/system/xpn-network.service.d
 ```
 
-These are first-install commands; stop the services before replacing files on later updates. Use either this manual layout or the future `.deb` layout, not both concurrently. Node runs as `xpn`; the packet daemon runs as the separate `xpn-packet` account. Neither may modify its program files. See [privilege separation and migration](PRIVILEGE-SEPARATION.md). State will live in `/var/lib/xpn`, created by systemd.
+Create `/etc/systemd/system/xpn-control.service.d/checkout.conf`:
+
+```ini
+[Service]
+BindReadOnlyPaths=/root/repo/xpn:/run/xpn-source
+WorkingDirectory=/run/xpn-source
+ExecStart=
+ExecStart=/usr/bin/env /run/xpn-source/build/tools/node-v24.22.1-linux-x64/bin/node /run/xpn-source/server/main.mjs
+```
+
+Create `/etc/systemd/system/xpn-native.service.d/checkout.conf`:
+
+```ini
+[Service]
+BindReadOnlyPaths=/root/repo/xpn:/run/xpn-source
+ExecStart=
+ExecStart=/usr/bin/env /run/xpn-source/build/native/xpnd server 3301 /run/xpn/control.sock /xpn/vpn xpn0 --loopback
+```
+
+Create `/etc/systemd/system/xpn-network.service.d/checkout.conf`:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/bin/sh /root/repo/xpn/deploy/network.sh
+ExecStop=
+ExecStop=/bin/sh /root/repo/xpn/deploy/network.sh stop
+```
+
+`/run/xpn-source` is a mount view inside each service's private namespace, not a second source tree. `ProtectHome=yes` stays enabled; `/root` stays mode `0700`. The read-only mapping and private Node execution were verified with a temporary `systemd-run` service as `xpn`. Actual production unit startup remains untested. Both Node and the packet daemon use `xpn:xpn`; only the short-lived network setup runs as root. State remains `/var/lib/xpn`, created by systemd. Keep checkout files root-owned and unwritable by `xpn`. Stop services before updating/rebuilding their in-place files. Use either this manual layout or the future `.deb` layout, not both concurrently.
 
 ## 4. Create the configuration once
 
@@ -95,7 +124,7 @@ Keep SMTP unset for the first test. Preserve `MASTER_KEY` once the database exis
 Initially omit `VPN_SNI`: the client sends the endpoint name `alta.jeffhansen.com`. Pinning can still be enabled independently. To pin the existing certificate, compute its fingerprint from the trusted local **leaf/fullchain PEM actually named in nginx's `ssl_certificate` directive**:
 
 ```sh
-sudo /usr/bin/node server/cert-pin.mjs /ACTUAL/NGINX/CERTIFICATE/fullchain.pem
+sudo build/tools/node-v24.22.1-linux-x64/bin/node server/cert-pin.mjs /ACTUAL/NGINX/CERTIFICATE/fullchain.pem
 ```
 
 Replace the path; Let's Encrypt lineage directories do not always equal the hostname. Use your selected Node executable if it is not `/usr/bin/node`. Put the printed digest into `VPN_CERTIFICATE_PINS` before creating users, or enter it in each user's Certificate / SNI settings. Later, set `VPN_SNI=app.jeffhansen.com` only after configuring nginx to route that SNI to this certificate/service, while also handling HTTP Host `alta.jeffhansen.com`.
@@ -110,6 +139,7 @@ Install the HTTP-level declarations once:
 sudo install -m 644 deploy/nginx-xpn-http.conf /etc/nginx/conf.d/xpn-http.conf
 sudo install -d -m 755 /etc/nginx/snippets
 sudo install -m 644 deploy/nginx-xpn-locations.conf /etc/nginx/snippets/xpn-locations.conf
+sudo sed -i 's|127.0.0.1:3001|127.0.0.1:3301|g' /etc/nginx/snippets/xpn-locations.conf
 ```
 
 Confirm `/etc/nginx/nginx.conf` includes `/etc/nginx/conf.d/*.conf` **inside `http {}`**. If your nginx layout differs, explicitly include `xpn-http.conf` there once. Do not also install the whole standalone `deploy/nginx.conf`: it duplicates the map/zones and would create another HTTPS server block.
@@ -128,7 +158,7 @@ Check for server-level authentication or rewrite rules inherited by the new loca
 
 ## 6. Start, verify, then reload nginx
 
-Before starting, review `deploy/network.sh`: it creates `xpn0`, enables IPv4 forwarding and creates its own `inet xpn` nftables table. Ensure `10.77.0.0/24` does not overlap the host's networks and `xpn0`/`inet xpn` are not used by another service. Existing FORWARD-drop policies may need explicit allow rules too. There is no need to expose ports 3000/3001 in the AWS security group.
+Before starting, review `deploy/network.sh`: it creates `xpn0`, enables IPv4 forwarding and creates its own `inet xpn` nftables table. Ensure `10.77.0.0/24` does not overlap the host's networks and `xpn0`/`inet xpn` are not used by another service. Existing FORWARD-drop policies may need explicit allow rules too. There is no need to expose ports 3000/3301 in the AWS security group.
 
 ```sh
 sudo systemctl daemon-reload

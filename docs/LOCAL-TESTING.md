@@ -11,7 +11,7 @@ The repository includes a draft Debian source recipe producing exactly two user-
 | `xpn-client` | `/usr/bin/xpn` Python launcher, private native executable, camera enrollment support |
 | `xpn-server` | private native executable, Node console/enrollment, bundled locked JS dependencies, systemd units and example nginx/config files |
 
-The shared native executable is installed in different private paths, so the two packages can coexist without file conflicts. Installing either does not require the other. Server installation creates separate `xpn` control and `xpn-packet` packet accounts but **does not start or enable services or alter nginx/firewall configuration**. Upgrading/removing the server stops its services; restart explicitly after checking configuration. User credentials/data are retained.
+The shared native executable is installed in different private paths, so the two packages can coexist without file conflicts. Installing either does not require the other. Server installation creates one `xpn` account for both control and packet services but **does not start or enable services or alter nginx/firewall configuration**. Upgrading/removing the server stops its services; restart explicitly after checking configuration. User credentials/data are retained.
 
 ## 1. Create test VMs on your Mac
 

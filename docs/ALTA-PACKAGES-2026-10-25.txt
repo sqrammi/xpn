@@ -1,0 +1,63 @@
+Alta package installation record
+Performed: 2026-10-25, America/Denver
+APT timestamp: 2026-10-26 03:27:02–03:27:13 UTC
+Source: /var/log/apt/history.log, read-only audit 2026-10-26
+48 new packages; 0 upgrades; 0 removals.
+build-essential and libssl-dev were already installed and current.
+
+Package	Architecture	Installed version	Reason
+cmake	amd64	4.2.3-2ubuntu2	explicit request
+cmake-data	amd64	4.2.3-2ubuntu2	automatic dependency
+comerr-dev	amd64	2.1-1.47.2-3ubuntu4	automatic dependency
+krb5-multidev	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libarchive13t64	amd64	3.8.5-1ubuntu2.3	automatic dependency
+libbrotli-dev	amd64	1.2.0-3build1	automatic dependency
+libcap-dev	amd64	1:2.75-10ubuntu2	automatic dependency
+libcurl4-openssl-dev	amd64	8.18.0-1ubuntu2.8	explicit request
+libev-dev	amd64	1:4.33-2.1build2	automatic dependency
+libev4t64	amd64	1:4.33-2.1build2	automatic dependency
+libevent-2.1-7t64	amd64	2.1.12-stable-10ubuntu0.2	automatic dependency
+libgmp-dev	amd64	2:6.3.0+dfsg-5ubuntu2	automatic dependency
+libgmpxx4ldbl	amd64	2:6.3.0+dfsg-5ubuntu2	automatic dependency
+libgnutls-dane0t64	amd64	3.8.12-2ubuntu1.1	automatic dependency
+libgnutls-openssl27t64	amd64	3.8.12-2ubuntu1.1	automatic dependency
+libgnutls28-dev	amd64	3.8.12-2ubuntu1.1	automatic dependency
+libgssrpc4t64	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libidn2-dev	amd64	2.3.8-4build1	automatic dependency
+libjansson-dev	amd64	2.14-2build4	explicit request
+libjsoncpp26	amd64	1.9.6-5	automatic dependency
+libkadm5clnt-mit12	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libkadm5srv-mit12	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libkdb5-10t64	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libkrb5-dev	amd64	1.22.1-2ubuntu4.1	automatic dependency
+libldap-dev	amd64	2.6.10+dfsg-1ubuntu5	automatic dependency
+libnghttp2-dev	amd64	1.68.0-2ubuntu0.2	automatic dependency
+libp11-kit-dev	amd64	0.26.2-2	automatic dependency
+libpkgconf7	amd64	2.5.1-4	automatic dependency
+libpsl-dev	amd64	0.21.2-1.1build2	automatic dependency
+librhash1	amd64	1.4.6-1.1	automatic dependency
+librtmp-dev	amd64	2.4+20151223.gitfa8646d.1-3	automatic dependency
+libssh2-1-dev	amd64	1.11.1-1ubuntu0.26.04.4	automatic dependency
+libtasn1-6-dev	amd64	4.21.0-2	automatic dependency
+libtasn1-doc	amd64	4.21.0-2	automatic dependency
+libunbound8	amd64	1.24.2-1ubuntu2.4	automatic dependency
+libuv1-dev	amd64	1.51.0-2ubuntu1	automatic dependency
+libwebsockets-dev	amd64	4.3.5-3ubuntu1.1	explicit request
+libwebsockets-evlib-ev	amd64	4.3.5-3ubuntu1.1	automatic dependency
+libwebsockets-evlib-glib	amd64	4.3.5-3ubuntu1.1	automatic dependency
+libwebsockets-evlib-uv	amd64	4.3.5-3ubuntu1.1	automatic dependency
+libwebsockets19t64	amd64	4.3.5-3ubuntu1.1	automatic dependency
+libzstd-dev	amd64	1.5.7+dfsg-3	automatic dependency
+nettle-dev	amd64	3.10.2-1	automatic dependency
+ninja-build	amd64	1.13.2-1	explicit request
+pkg-config	amd64	2.5.1-4	explicit request
+pkgconf	amd64	2.5.1-4	automatic dependency
+pkgconf-bin	amd64	2.5.1-4	automatic dependency
+zlib1g-dev	amd64	1:1.3.dfsg+really1.3.1-1ubuntu3.2	automatic dependency
+
+Original APT transaction:
+Start-Date: 2026-10-26  03:27:02
+Commandline: apt-get install -y build-essential cmake ninja-build pkg-config libssl-dev libwebsockets-dev libjansson-dev libcurl4-openssl-dev
+Install: libidn2-dev:amd64 (2.3.8-4build1, automatic), libcurl4-openssl-dev:amd64 (8.18.0-1ubuntu2.8), libkrb5-dev:amd64 (1.22.1-2ubuntu4.1, automatic), libjansson-dev:amd64 (2.14-2build4), libwebsockets-dev:amd64 (4.3.5-3ubuntu1.1), libgnutls28-dev:amd64 (3.8.12-2ubuntu1.1, automatic), libkadm5srv-mit12:amd64 (1.22.1-2ubuntu4.1, automatic), libwebsockets-evlib-glib:amd64 (4.3.5-3ubuntu1.1, automatic), libgmpxx4ldbl:amd64 (2:6.3.0+dfsg-5ubuntu2, automatic), libgssrpc4t64:amd64 (1.22.1-2ubuntu4.1, automatic), libuv1-dev:amd64 (1.51.0-2ubuntu1, automatic), libwebsockets19t64:amd64 (4.3.5-3ubuntu1.1, automatic), libev4t64:amd64 (1:4.33-2.1build2, automatic), libldap-dev:amd64 (2.6.10+dfsg-1ubuntu5, automatic), libjsoncpp26:amd64 (1.9.6-5, automatic), pkgconf:amd64 (2.5.1-4, automatic), zlib1g-dev:amd64 (1:1.3.dfsg+really1.3.1-1ubuntu3.2, automatic), libwebsockets-evlib-ev:amd64 (4.3.5-3ubuntu1.1, automatic), libwebsockets-evlib-uv:amd64 (4.3.5-3ubuntu1.1, automatic), libarchive13t64:amd64 (3.8.5-1ubuntu2.3, automatic), comerr-dev:amd64 (2.1-1.47.2-3ubuntu4, automatic), libssh2-1-dev:amd64 (1.11.1-1ubuntu0.26.04.4, automatic), libtasn1-doc:amd64 (4.21.0-2, automatic), libcap-dev:amd64 (1:2.75-10ubuntu2, automatic), libp11-kit-dev:amd64 (0.26.2-2, automatic), libkdb5-10t64:amd64 (1.22.1-2ubuntu4.1, automatic), libunbound8:amd64 (1.24.2-1ubuntu2.4, automatic), libgnutls-dane0t64:amd64 (3.8.12-2ubuntu1.1, automatic), libbrotli-dev:amd64 (1.2.0-3build1, automatic), libzstd-dev:amd64 (1.5.7+dfsg-3, automatic), libevent-2.1-7t64:amd64 (2.1.12-stable-10ubuntu0.2, automatic), libpsl-dev:amd64 (0.21.2-1.1build2, automatic), pkg-config:amd64 (2.5.1-4), librhash1:amd64 (1.4.6-1.1, automatic), libtasn1-6-dev:amd64 (4.21.0-2, automatic), libnghttp2-dev:amd64 (1.68.0-2ubuntu0.2, automatic), krb5-multidev:amd64 (1.22.1-2ubuntu4.1, automatic), cmake-data:amd64 (4.2.3-2ubuntu2, automatic), pkgconf-bin:amd64 (2.5.1-4, automatic), libpkgconf7:amd64 (2.5.1-4, automatic), libgmp-dev:amd64 (2:6.3.0+dfsg-5ubuntu2, automatic), nettle-dev:amd64 (3.10.2-1, automatic), libgnutls-openssl27t64:amd64 (3.8.12-2ubuntu1.1, automatic), ninja-build:amd64 (1.13.2-1), libev-dev:amd64 (1:4.33-2.1build2, automatic), cmake:amd64 (4.2.3-2ubuntu2), libkadm5clnt-mit12:amd64 (1.22.1-2ubuntu4.1, automatic), librtmp-dev:amd64 (2.4+20151223.gitfa8646d.1-3, automatic)
+End-Date: 2026-10-26  03:27:13
+

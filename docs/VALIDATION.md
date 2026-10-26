@@ -2,6 +2,14 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
+## October 26: in-place, single-account validation
+
+CI follow-up: GitHub Actions run `40329489049` at `4d46eb2` passed the Node job but failed the native TUN fixture startup. The fixture is tracked in that commit. Reproduced the same Node `MODULE_NOT_FOUND` on Alta when the unprivileged service account cannot traverse the checkout's private parent directory. The CI step now uses the read-only mount wrapper. The harness explicitly checks fixture readability and detects early child exits; local readiness checks and Alta's inaccessible-path negative case plus wrapped real TUN transfers passed. The updated workflow has not yet been pushed or rerun on GitHub.
+
+Builds/tests now run in `/root/repo/xpn`, with Node under `build/tools` and fresh native outputs under `build/native`. Both Node and C use `xpn`. Ten backend tests, three native CTests, explicit privilege/root-refusal tests, all six nginx pinning cases, hybrid/custom-SNI, five network lifecycle tests and the real split/full TUN/NAT harness passed. Connected native threads have no capabilities and cannot gain privileges. Synthetic loopback transport measured approximately 82–86 Mbps per direction in this run.
+
+The previous `/opt/xpn-test` workspace was archived under `build/host-migration-2026-10-26` and removed; the unused `xpn-packet` account/group was removed. Private read-only checkout access was tested with a temporary systemd unit, without loosening `/root` permissions. No persistent XPN deployment or live nginx change was made. See [host changes](ALTA-HOST-CHANGES.md) for the exact operational record. Earlier entries below retain the historical two-account test results.
+
 ## Alta and portable Mac build follow-up
 
 - Alta: release `xpnd` compiled with GCC 15.2, OpenSSL 3.5.5, libwebsockets 4.3.5, Jansson 2.14 and curl 8.18.0. All three native CTests passed. Explicit root/saved-root/root-group/retained-capability rejection and clean privilege inheritance passed, including the unprivileged `xpn-packet` invocation and production CLI root refusal.
@@ -68,6 +76,6 @@ The hybrid command requires OpenSSL 3.5+. `OPENSSL_BIN` and `NGINX_BIN` can sele
 
 ## Server privilege separation follow-up
 
-The Linux executable checks identities/capabilities and locks down privilege acquisition before initialization. The native unit uses a separate `xpn-packet` account, with group-only control socket access and no database/environment-file access. The Linux tests and connected TUN checks passed on Alta as recorded above. Production systemd installation remains pending; use `docs/PRIVILEGE-SEPARATION.md` for deployment verification.
+The Linux executable checks identities/capabilities and locks down privilege acquisition before initialization. The native unit now shares the unprivileged `xpn` account with Node. It retains capability restrictions and masked database/environment paths; the shared UID does not isolate Node from the packet process. The Linux tests and connected TUN checks passed on Alta as recorded above. Production systemd installation remains pending; use `docs/PRIVILEGE-SEPARATION.md` for deployment verification.
 
 No live SMTP email, PPA upload or GitHub workflow dispatch was performed in this validation session.

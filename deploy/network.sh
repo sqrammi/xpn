@@ -12,8 +12,8 @@ case "${1:-start}" in
 esac
 XPN_WAN_IFACE=${XPN_WAN_IFACE:-$(ip -4 route show default | awk 'NR==1 {print $5}')}
 case "$XPN_WAN_IFACE" in ''|*[!a-zA-Z0-9_.:-]*) echo 'Set XPN_WAN_IFACE to your outbound network interface' >&2; exit 1;; esac
-id xpn-packet >/dev/null
-if ! ip link show xpn0 >/dev/null 2>&1; then ip tuntap add dev xpn0 mode tun user xpn-packet; fi
+id xpn >/dev/null
+if ! ip link show xpn0 >/dev/null 2>&1; then ip tuntap add dev xpn0 mode tun user xpn; fi
 ip address replace 10.77.0.1/24 dev xpn0
 ip link set dev xpn0 mtu 1400 up
 sysctl -w net.ipv4.ip_forward=1
