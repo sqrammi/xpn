@@ -2,7 +2,9 @@
 
 Use the existing nginx HTTPS virtual host and Let's Encrypt certificate. The console will be `https://alta.jeffhansen.com/xpn/`, enrollment under `/xpn/join`, and the native tunnel `wss://alta.jeffhansen.com/xpn/vpn`. Both upstream services listen only on loopback. No additional public port or certificate is required.
 
-These are manual instructions, not a record of a deployment: no connection to alta or change to its nginx/services has been made. The source checkout there is `~/repo/xpn`. Ensure it contains the latest changes from this workspace first; uncommitted local changes do not arrive through `git pull`.
+These are manual deployment instructions. On 2026-10-25, the server was built and tested on alta in `/opt/xpn-test/src`, including isolated TUN/NAT tests; the live nginx configuration and persistent VPN services were not changed. The original checkout is `~/repo/xpn`. Its GitHub SSH fetch was denied, so testing used a source snapshot transferred from the Mac. Ensure the checkout contains the latest changes before installing from it.
+
+Observed host details: Ubuntu 26.04.1 Resolute, x86-64, system Node 22.22.1, existing HTTPS certificate `/etc/ssl/cert.pem`. A checksum-verified private Node 24.22.1 runtime is available at `/opt/xpn-test/tools/node-v24.22.1-linux-x64/bin/node`; the system Node was preserved. **Port 3001 is already an upstream for `/ips/`**, even though no listener was present during inspection. Reserve another native port, such as 3301, and update both the native unit and the installed nginx snippet before deploying. Recheck availability first.
 
 ## 1. Inspect prerequisites on alta
 

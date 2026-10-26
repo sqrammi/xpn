@@ -1,6 +1,17 @@
 # Validation record
 
-Date: 2026-10-25. Host: Apple Silicon macOS development machine.
+Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
+
+## Alta and portable Mac build follow-up
+
+- Alta: release `xpnd` compiled with GCC 15.2, OpenSSL 3.5.5, libwebsockets 4.3.5, Jansson 2.14 and curl 8.18.0. All three native CTests passed. Explicit root/saved-root/root-group/retained-capability rejection and clean privilege inheritance passed, including the unprivileged `xpn-packet` invocation and production CLI root refusal.
+- Ten backend tests and JavaScript syntax checks passed with a private Node 24.22.1 runtime. System Node 22 was preserved.
+- All six nginx transport cases passed as `xpn-packet`: legacy CA trust, custom SNI, wrong pin, trusted certificate with wrong pin, pin rotation and pin-only. Custom-SNI hybrid crypto also passed. The synthetic loopback benchmark measured 83.3–99.3 Mbps per direction on Alta; **200 Mbps has not been demonstrated on this host**.
+- The new `native/tests/tun-integration.py` passed on Alta: production C server, separate unprivileged Node/packet accounts, matching pin with unrelated certificate hostname and custom SNI, real TUN interfaces, split/full routes, nftables NAT, and byte-for-byte 1 MiB HTTP transfers. Every connected server thread had the packet UID, zero capability masks and no-new-privileges. All network changes were confined to disposable namespaces.
+- Mac: both static dependency SDKs and the universal native XCFramework were built successfully with OpenSSL 3.6.5, libwebsockets 4.5.8, curl 8.23.0 and Jansson 2.15.1. Fixed explicit macOS architecture selection and separated manifest install roots to prevent one architecture pruning another.
+- Native tests linked against that exact framework passed on Apple Silicon, including custom-SNI nginx PSK/hybrid tests (799.5/780.7 Mbps per direction respectively). The unsigned app and packet tunnel extension compiled and linked successfully in both the ARM Debug and universal ARM/Intel Release builds. This is compilation/transport evidence, not an operating-system VPN activation test.
+- Signing follow-up: all four targets now select Soundvision Technologies LLC team PHZ3789J83 in the ignored local overlay. After device registration and local Keychain authorization, the macOS Debug build succeeded. `codesign --verify --deep --strict` passed; both app and extension contain the Packet Tunnel entitlement and matching `PHZ3789J83.com.jeffhansen.xpn.shared` Keychain group. The signed client launched successfully and displayed its enrollment screen. A live macOS tunnel remains untested: no persistent XPN server has been started on Alta. No iOS device run was performed.
+- Build/test files are under `build/` locally and `/opt/xpn-test/` remotely. Alta's original checkout and live nginx routes were preserved. Build dependencies and `xpn`/`xpn-packet` accounts were installed; persistent XPN services were not. `systemd-analyze verify` found the expected absent production executable paths, so production unit startup remains untested.
 
 ## Passed locally
 
@@ -42,21 +53,21 @@ The hybrid command requires OpenSSL 3.5+. `OPENSSL_BIN` and `NGINX_BIN` can sele
 
 ## Not validated yet
 
-- Ubuntu `xpnd` executable, real `/dev/net/tun`, nftables/NAT/systemd operation and AWS networking.
-- Full portable/static Apple XCFramework build across iOS device/simulator and both macOS architectures; app signing, provisioning, extension entitlement activation and camera/Keychain behavior on physical devices.
+- Production systemd deployment, host firewall integration and real WAN/AWS networking. Ubuntu `xpnd`, TUN and NAT are covered by the isolated Alta tests above.
+- Static iOS device/simulator XCFramework slices, iOS signing/provisioning, running the macOS/iOS packet tunnel, and camera/shared-Keychain behavior during enrollment. Mac signing and application launch passed as recorded above.
 - macOS 14 runtime compatibility of a properly cross-built release. The local link check used development libraries targeting newer macOS releases and emitted deployment-target warnings.
 - End-to-end DNS and IPv6 leak tests, WAN throughput, multiple simultaneous clients, one-hour reconnect behavior, mobile sleep/roaming and failover.
 - Independent security review and fuzzing of the complete deployment. Sanitizers and functional tests are useful evidence, not a security audit.
 
 ## Local build and packaging helpers
 
-- Local XcodeGen overlay generated successfully in a temporary directory with all four expected bundle identifiers, team setting, automatic signing and shared Keychain group. No signing account was accessed.
+- Local XcodeGen overlay generated successfully with all four expected bundle identifiers, team setting, automatic signing and shared Keychain group. The subsequent signed Mac build used the user's Soundvision team as recorded above.
 - Noble and Resolute source preparation completed with locked npm downloads and install scripts disabled. Their upstream `.orig.tar.xz` archives had identical hashes; per-series Debian metadata differed as intended. Private state, Git metadata and Apple SDK artifacts were excluded.
 - Five mocked network lifecycle tests passed: starting replaces only the XPN table, stopping removes only the XPN table/interface, repeated stop is harmless, unknown commands change nothing, and new TUN interfaces belong to `xpn-packet`. No host networking was altered.
-- Shell/Python syntax and Debian rules dry-run checks passed. These do not validate a Linux `.deb` build or installation; no Ubuntu VM is attached to this task. Full local Apple dependency builds, signed device runs, Debian package builds and a PPA upload remain unperformed.
+- Shell/Python syntax and Debian rules dry-run checks passed. These do not validate a Linux `.deb` build or installation. Signed device runs, iOS dependency builds, Debian package builds and a PPA upload remain unperformed.
 
 ## Server privilege separation follow-up
 
-The Linux executable now checks identities/capabilities and locks down privilege acquisition before initialization. The native unit uses a separate `xpn-packet` account, with group-only control socket access and no database/environment-file access. Linux-only CTest and explicit root CI cases cover root/saved-root/group/capability rejection and restriction inheritance. Those Linux C changes have **not** been compiled or run on this macOS host; systemd, TUN access and connected clients require verification on Ubuntu using `docs/PRIVILEGE-SEPARATION.md`. No change has been deployed to alta.
+The Linux executable checks identities/capabilities and locks down privilege acquisition before initialization. The native unit uses a separate `xpn-packet` account, with group-only control socket access and no database/environment-file access. The Linux tests and connected TUN checks passed on Alta as recorded above. Production systemd installation remains pending; use `docs/PRIVILEGE-SEPARATION.md` for deployment verification.
 
-The Git repository was initialized locally. No remote repository, cloud deployment, live SMTP email or GitHub workflow dispatch was performed.
+No live SMTP email, PPA upload or GitHub workflow dispatch was performed in this validation session.

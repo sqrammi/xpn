@@ -25,7 +25,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: sudo apt-get update && sudo apt-get install -y nginx libwebsockets-dev libssl-dev libcurl4-openssl-dev libjansson-dev cmake ninja-build
+      - run: sudo apt-get update && sudo apt-get install -y nginx libwebsockets-dev libssl-dev libcurl4-openssl-dev libjansson-dev cmake ninja-build iproute2 nftables curl
       - run: cmake -S native -B /tmp/xpn-build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer'
       - run: cmake --build /tmp/xpn-build
       - run: ctest --test-dir /tmp/xpn-build --output-on-failure
@@ -37,6 +37,10 @@ jobs:
           fi
           grep -q 'Server privilege check failed' /tmp/xpn-root-check.log
       - run: node server/native-integration.mjs /tmp/xpn-build/test_transport
+      - name: Non-root server with real TUN, split/full routing and NAT
+        run: |
+          sudo sh deploy/create-users.sh
+          sudo env PATH="$PATH" ASAN_OPTIONS=detect_leaks=0 python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
       - name: Certificate pinning and custom SNI through nginx
         run: |
           for scenario in sni wrong-pin trusted-wrong-pin rotation pin-only; do

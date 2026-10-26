@@ -36,7 +36,7 @@ The credential socket intentionally supplies active device keys to the native se
 
 ## Install or migrate on alta
 
-The source changes must first reach `~/repo/xpn` on alta. No remote service has been changed by this task.
+The source changes must first reach `~/repo/xpn` on alta. Tests have run from a separate snapshot at `/opt/xpn-test/src`; the two service accounts were created, but no persistent VPN service or live nginx configuration was installed.
 
 For a fresh manual installation, run `sudo sh deploy/create-users.sh` before starting the services, then follow [the alta deployment guide](ALTA-DEPLOYMENT.md). The package installer creates both accounts automatically.
 
@@ -86,4 +86,13 @@ Expect nonzero, identical real/effective/saved UID values for `xpn-packet`, `NoN
 sudo env ASAN_OPTIONS=detect_leaks=0 build/native/test_privilege --root
 ```
 
-The Linux CI workflow runs those cases plus an actual `xpnd server` root-launch rejection. They have been added but not executed on this macOS host. Five mocked network lifecycle tests run locally without touching networking. Actual systemd/TUN permissions and connected-client behavior must be checked on the Ubuntu host after installation.
+These cases and an actual `xpnd server` root-launch rejection passed on alta (Ubuntu Resolute). Connected server threads also passed UID/capability/no-new-privileges checks during real TUN traffic. The CI workflow includes these tests, but has not been dispatched in this session.
+
+To repeat the TUN test without modifying host routes or firewall rules:
+
+```sh
+sudo sh deploy/create-users.sh
+sudo env PATH="$PATH" python3 native/tests/tun-integration.py "$(pwd)/build/native/xpnd"
+```
+
+Use a PATH containing Node 24, nginx, curl, OpenSSL, iproute2, nftables and util-linux. This Linux-only test requires root to create disposable network namespaces. Inside them, it runs the actual server as `xpn-packet`, Node as `xpn`, and verifies split/full routing through pinned custom-SNI WSS, TUN and NAT against a private HTTP fixture. It checks every connected server thread has a non-root UID, zero capability masks and `NoNewPrivs: 1`. Processes, temporary profiles and namespaces are cleaned up after the run. It does not install or validate the production systemd deployment.

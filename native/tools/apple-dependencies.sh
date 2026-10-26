@@ -32,21 +32,24 @@ fi
 export VCPKG_DISABLE_METRICS=1
 mkdir -p "$XPN_DEPENDENCY_WORK/sdk" "$XPN_ROOT/clients/apple/Resources/ThirdParty"
 for XPN_TRIPLET in $XPN_TRIPLETS; do
+    # Manifest installs prune packages for other targets. Keep each architecture
+    # in its own install tree so a later slice cannot remove an earlier SDK.
+    XPN_INSTALL_ROOT=$XPN_DEPENDENCY_WORK/installs/$XPN_TRIPLET
     "$XPN_DEPENDENCY_WORK/vcpkg/vcpkg" install \
         --triplet "$XPN_TRIPLET" \
         --overlay-triplets="$XPN_ROOT/native/deps/triplets" \
         --x-manifest-root="$XPN_ROOT/native/deps" \
-        --x-install-root="$XPN_DEPENDENCY_WORK/installed"
+        --x-install-root="$XPN_INSTALL_ROOT"
     case "$XPN_TRIPLET" in
         arm64-ios) XPN_SLICE=ios-arm64;;
         arm64-ios-simulator) XPN_SLICE=simulator-arm64;;
         arm64-osx) XPN_SLICE=macos-arm64;;
         x64-osx) XPN_SLICE=macos-x86_64;;
     esac
-    if [ ! -e "$XPN_DEPENDENCY_WORK/sdk/$XPN_SLICE" ]; then
-        ln -s "$XPN_DEPENDENCY_WORK/installed/$XPN_TRIPLET" "$XPN_DEPENDENCY_WORK/sdk/$XPN_SLICE"
+    if [ -L "$XPN_DEPENDENCY_WORK/sdk/$XPN_SLICE" ] || [ ! -e "$XPN_DEPENDENCY_WORK/sdk/$XPN_SLICE" ]; then
+        ln -sfn "$XPN_INSTALL_ROOT/$XPN_TRIPLET" "$XPN_DEPENDENCY_WORK/sdk/$XPN_SLICE"
     fi
-    for XPN_LICENSE in "$XPN_DEPENDENCY_WORK/installed/$XPN_TRIPLET/share/"*/copyright; do
+    for XPN_LICENSE in "$XPN_INSTALL_ROOT/$XPN_TRIPLET/share/"*/copyright; do
         test -f "$XPN_LICENSE" || continue
         XPN_NAME=$(basename "$(dirname "$XPN_LICENSE")")
         cp "$XPN_LICENSE" "$XPN_ROOT/clients/apple/Resources/ThirdParty/$XPN_NAME.txt"

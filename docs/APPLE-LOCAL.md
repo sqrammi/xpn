@@ -23,7 +23,7 @@ The repo has two app schemes, `XPN-macOS` and `XPN-iOS`. Each embeds a packet tu
    cd /Users/ninkid/repo/xpn
    ```
 
-The previous temporary `XPNNative.xcframework` in this checkout is **macOS-only and linked to Homebrew libraries**. It was a link test, not an iOS SDK or a distributable framework. The next step replaces it with target-specific static libraries.
+The current `XPNNative.xcframework` in this checkout contains self-contained static libraries for both macOS architectures, built on 2026-10-25. It does not yet contain iOS slices. Native tests, the universal unsigned Release build, and the signed ARM Debug app/extension build passed. The signed client launched successfully. The older Homebrew-linked framework was backed up by the packaging script.
 
 ## 2. Build the native dependencies and framework
 
@@ -36,7 +36,7 @@ XPN_REPLACE_FRAMEWORK=1 sh native/tools/package-apple.sh
 
 The first command downloads a pinned vcpkg checkout and compiles OpenSSL, libwebsockets, curl, Jansson and their dependencies. It can take a substantial amount of time and disk space on the first run. It builds four targets: iOS device arm64, iOS simulator arm64, macOS arm64 and macOS x86_64. The simulator slice therefore targets Apple Silicon Macs. No `sudo` or `CI=true` is needed.
 
-Build work is kept under `build/apple-deps`. Rerun the first command after an interrupted dependency build; completed ports are cached. The script rejects an existing vcpkg checkout at a different revision instead of resetting it. If changing the pinned revision, select a new work directory with `XPN_DEPENDENCY_WORK` and use its `sdk` folder as `XPN_APPLE_SDKS` for packaging.
+Build work is kept under `build/apple-deps`. Each architecture has its own manifest installation under `installs/`, so building a later architecture cannot prune an earlier SDK. Rerun the first command after an interrupted dependency build; completed ports are cached. The script rejects an existing vcpkg checkout at a different revision instead of resetting it. If changing the pinned revision, select a new work directory with `XPN_DEPENDENCY_WORK` and use its `sdk` folder as `XPN_APPLE_SDKS` for packaging.
 
 The packaging command compiles XPN's C code for those targets and produces:
 
@@ -55,11 +55,15 @@ XPN_APPLE_TARGETS=macos XPN_REPLACE_FRAMEWORK=1 sh native/tools/package-apple.sh
 
 Then rerun the default pair to add iOS, reusing the dependency cache. A Mac-only framework cannot build the iOS scheme. `XPN_APPLE_TARGETS=ios` is also available, but replaces the output with an iOS-only framework; use the default `all` to retain both platforms.
 
-If this first full SDK build fails, retain the vcpkg error output and its referenced build log. Do not substitute macOS Homebrew libraries for iOS libraries: platform, architecture and deployment target must match. This full static dependency build has not yet been validated here end to end.
+If the full SDK build fails, retain the vcpkg error output and its referenced build log. Do not substitute macOS Homebrew libraries for iOS libraries: platform, architecture and deployment target must match. The static macOS dependency build is validated; iOS dependency builds remain unvalidated.
 
 ## 3. Set your team and bundle identifiers
 
 Find your ten-character Team ID in your Apple Developer membership details. Choose a unique reverse-DNS prefix you control, for example `com.jeffhansen.xpn`. Replace the sample values in this command:
+
+The initial signing attempt selected Personal Team `B9PJSFMM8M`, which cannot provision Network Extensions. The local overlay now uses the account's **Soundvision Technologies LLC** team, `PHZ3789J83`, for all four targets. Apple accepted the company team and provisioned this Mac and the macOS extension. Complete any macOS Keychain prompt for `codesign` locally using your login password; do not paste that password into a terminal command or chat. A successful unsigned build is still insufficient to run the VPN.
+
+The signed Debug build is now at `build/xcode-macos/Build/Products/Debug/XPN-macOS.app`. Its signatures were verified and the app was launched. This is a development build for the registered Mac; it is not a notarized public download. Enrollment and a live packet-tunnel connection remain to be tested against the deployed server.
 
 ```sh
 python3 native/tools/apple-project.py YOURTEAMID com.jeffhansen.xpn
@@ -129,3 +133,5 @@ xcodebuild -project clients/apple/XPN.xcodeproj -scheme XPN-iOS \
 ```
 
 If you want Xcode to contact your team for provisioning updates, add `-allowProvisioningUpdates` after configuring the account. Keep `CODE_SIGNING_ALLOWED=NO` only for compile/link checks; it is not a working VPN installation. For a first physical-device launch, return to ⌘R in Xcode. Archives/export/TestFlight/Developer ID release work come after local functional tests.
+
+If the selected development Mac is not registered with the company team, add `-allowProvisioningDeviceRegistration` alongside `-allowProvisioningUpdates` to register it and include it in the development profile. The signing key may require local Keychain authorization even after provisioning succeeds.
