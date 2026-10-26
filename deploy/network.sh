@@ -12,6 +12,13 @@ case "${1:-start}" in
 esac
 XPN_WAN_IFACE=${XPN_WAN_IFACE:-$(ip -4 route show default | awk 'NR==1 {print $5}')}
 case "$XPN_WAN_IFACE" in ''|*[!a-zA-Z0-9_.:-]*) echo 'Set XPN_WAN_IFACE to your outbound network interface' >&2; exit 1;; esac
+# Host access is distinct from forwarding: allow ping and explicitly selected
+# TCP services, while keeping other host services and client-to-client traffic private.
+XPN_HOST_TCP_PORTS=${XPN_HOST_TCP_PORTS:-22,443}
+case "$XPN_HOST_TCP_PORTS" in ''|*[!0-9,]*|,*|*,|*,,*) echo 'Invalid XPN_HOST_TCP_PORTS' >&2; exit 1;; esac
+for port in $(printf '%s' "$XPN_HOST_TCP_PORTS" | tr ',' ' '); do
+    [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || { echo 'Invalid host TCP port' >&2; exit 1; }
+done
 id xpn >/dev/null
 if ! ip link show xpn0 >/dev/null 2>&1; then ip tuntap add dev xpn0 mode tun user xpn; fi
 ip address replace 10.77.0.1/24 dev xpn0
@@ -28,6 +35,11 @@ $XPN_DELETE
 table inet xpn {
     chain input {
         type filter hook input priority -10; policy accept;
+        iifname "xpn0" ip saddr != 10.77.0.0/24 drop
+        iifname "xpn0" ip daddr { 127.0.0.0/8, 169.254.0.0/16 } drop
+        iifname "xpn0" ct state established,related accept
+        iifname "xpn0" ip protocol icmp icmp type echo-request limit rate 25/second burst 50 packets accept
+        iifname "xpn0" tcp dport { $XPN_HOST_TCP_PORTS } accept
         iifname "xpn0" drop
     }
     chain forward {

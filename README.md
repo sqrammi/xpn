@@ -2,14 +2,15 @@
 
 TLS-only VPN implementation with a Node administration service, a **C/OpenSSL/libwebsockets** packet service, Linux TUN client, and SwiftUI macOS/iOS Network Extension client sources. Administration and VPN traffic share an nginx HTTPS virtual host, including deployment under a URL prefix. There is no Rust or Go implementation.
 
-**Status:** initial implementation, not a validated production release. After local C builds were explicitly authorized, the C library passed sanitizer tests and real nginx/WSS integration tests in both PSK and ML-KEM hybrid modes. Ten Node tests pass. The unsigned macOS app/provider build and link, and both iOS Swift targets typecheck. No Linux TUN/routing or signed Apple device test has run. The full portable Apple dependency SDK workflow still needs a successful CI run. See [Apple integration requirements](clients/apple/README.md), [validation results](docs/VALIDATION.md), and [protocol/security boundaries](docs/PROTOCOL.md).
+**Status:** development implementation. Linux real-TUN/NAT tests and a signed live macOS connection to Alta pass. Optional inner encryption has native/authentication/transport coverage; iOS device validation and production security review remain outstanding. See [validation results](docs/VALIDATION.md) and [protocol/security boundaries](docs/PROTOCOL.md).
 
 ## Included
 
 - Per-device user creation, automatic 256-bit keys, full/split IPv4 policies, DNS selection, revocation and key rotation.
 - One-use, 15-minute encrypted QR enrollment; optional SMTP delivery of the QR image.
 - Exact SHA-256 certificate pinning with independent TLS SNI on all native clients; configure new or existing devices in the console. See [pinning, custom SNI and certificate rotation](docs/PINNING.md).
-- TLS 1.3 PSK mutual authentication and ChaCha20-Poly1305 inside WSS, independent of nginx's TLS termination. Fast PSK mode is the default; optional PSK + ML-KEM requires OpenSSL 3.5+.
+- New client sources use one active and one authenticated standby TCP/TLS stream, with measured-latency failover and 15-second TCP keepalive defaults. See [v3 behavior and limits](docs/PROTOCOL.md#activestandby-connections-v3).
+- Outer TLS is always on. Client checkboxes independently select extra end-to-end ChaCha20-Poly1305 packet encryption and required hybrid ML-KEM key exchange. Device PSK authentication remains mandatory in single-layer mode; extra encryption stays on by default. PQ requires compatible OpenSSL 3.5+ clients, server and nginx, without fallback.
 - Bounded native packet queues, source/policy validation, revocation polling and Linux routing/NAT deployment files.
 - Root-only network setup exits before serving clients; one unprivileged `xpn` account for Node and packet services, with privileged native server launches rejected. See [privilege separation](docs/PRIVILEGE-SEPARATION.md).
 - Linux camera scanning with `zbarcam`, transactional route setup, full-mode DNS setup and IPv6 leak prevention.
@@ -57,15 +58,14 @@ Ubuntu 24.04's OpenSSL supports the default fast PSK mode. Hybrid mode needs a v
 
 ## Deploy on Ubuntu / AWS
 
-Review and adapt the included configurations to the existing host before enabling services. This section contains deployment instructions; no AWS resources have been created or changed.
+With nginx HTTPS already configured, run from your source checkout:
 
-1. Install Node 24.13.1+, nginx, `iproute2`, `nftables`, and the native runtime dependencies. Install the tested release `xpnd` binary at `/usr/local/bin/xpnd`. Place this source tree at `/opt/xpn` and run `npm ci --omit=dev --ignore-scripts` there.
-2. Create the shared `xpn` service identity with `sudo sh deploy/create-users.sh`. Keep application source root-owned and unwritable by the service account. See [privilege separation and migration](docs/PRIVILEGE-SEPARATION.md).
-3. Copy `deploy/xpn.env.example` to `/etc/xpn.env`, mode **0600**, owned by root. Set `PUBLIC_URL` to the final HTTPS origin and prefix. Generate separate values with `openssl rand -hex 32` for `MASTER_KEY` and `ADMIN_TOKEN`. Configure your SMTP URL/from address if desired; the backend requires TLS. Do not commit secrets.
-4. Copy the three `deploy/xpn-*.service` files to `/etc/systemd/system/`. Mark `/opt/xpn/deploy/network.sh` executable. Review `deploy/network.sh` for the actual outbound interface and existing firewall. It creates `xpn0`, enables IPv4 forwarding and manages only its own nftables table; it does not flush your other rules. Additional existing FORWARD-drop policies must also allow the VPN traffic.
-5. Adapt `deploy/nginx.conf` with your hostname/certificate. Put its `map` and rate zones in nginx's `http` context and merge the server/locations with your existing virtual host. Ensure `PUBLIC_URL`, nginx's prefix, and `xpn-native.service`'s path agree. Keep ports 3000/3001 and the control socket private. Test configuration using `sudo nginx -t` before reloading.
-6. Enable with `sudo systemctl daemon-reload`, then `sudo systemctl enable --now xpn-network xpn-control xpn-native`, and reload nginx. Check `journalctl -u xpn-control -u xpn-native`. A systemd restart of the control service can disconnect active sessions as a fail-closed measure.
-7. Allow inbound TCP 443 in the instance security group; keep SSH restricted. No UDP or backend ports need public access. This NAT design does not require advertising client routes in the VPC. If you replace NAT with VPC routing, configure route tables and EC2 source/destination checks accordingly. Keep instance metadata inaccessible to VPN clients (the supplied policy denies link-local access).
+```sh
+sudo python3 deploy/install-server.py --url https://your-host/xpn
+sudo python3 deploy/install-server.py --show-admin-token
+```
+
+The installer builds in place, generates independent admin/database secrets, creates the single `xpn` service account, writes the systemd units and nginx integration, validates configuration, and starts/enables the services. It uses your existing certificate and keeps backend ports on loopback. Reruns preserve credentials, skip unchanged files/builds/services, and repair only what needs updating. Each run prints a root-only `changes.md` report listing the exact paths/actions, with configuration backups and a detailed command log. Use `--plan` for a read-only preview or `--nginx-site /path/to/site` if site selection is ambiguous. See [server installation](docs/ALTA-DEPLOYMENT.md) for options, failure recovery and the Alta command.
 
 Open `https://your-host/xpn/`, unlock using your admin token, create one identity per physical device, and scan its QR. **Email QR** sends only when explicitly selected in the UI; no live email has been sent during implementation. **New QR** replaces the invitation; **Rotate key** replaces the credential and disconnects old sessions; **Revoke** disables the identity.
 
@@ -88,7 +88,7 @@ See [clients/apple/README.md](clients/apple/README.md) for the signing team, bun
 
 ## Validate the throughput target
 
-After native CI and functional tests pass, use a separate permitted VPC host as an iperf3 endpoint (the VPN server's own tunnel-host address is deliberately blocked):
+After native CI and functional tests pass, use a separate permitted VPC host as an iperf3 endpoint (this measures forwarding/NAT as well as tunnel transport):
 
 ```sh
 # Separate VPC test host:

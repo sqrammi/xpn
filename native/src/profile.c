@@ -136,8 +136,9 @@ int packet_valid(const unsigned char *p, size_t n, uint32_t *src, uint32_t *dst)
 int packet_allowed(const profile *c, const unsigned char *p, size_t n) {
     uint32_t src,dst;
     if (!packet_valid(p,n,&src,&dst) || src != c->ip) return 0;
-    /* Deny peer-to-peer, tunnel-host access, multicast and AWS link-local metadata. */
-    if ((dst & 0xffffff00U) == 0x0a4d0000U || (dst & 0xffff0000U) == 0xa9fe0000U || dst >= 0xe0000000U || (dst & 0xff000000U) == 0x7f000000U || (dst & 0xff000000U) == 0) return 0;
+    /* The server gateway is subject to the host firewall. Continue denying
+     * other VPN peers, multicast, loopback and AWS link-local metadata. */
+    if (((dst & 0xffffff00U) == 0x0a4d0000U && dst != 0x0a4d0001U) || (dst & 0xffff0000U) == 0xa9fe0000U || dst >= 0xe0000000U || (dst & 0xff000000U) == 0x7f000000U || (dst & 0xff000000U) == 0) return 0;
     if (c->full) return 1;
     for (unsigned i = 0; i < c->routes_count; i++) if ((dst & c->routes[i].mask) == c->routes[i].net) return 1;
     return 0;

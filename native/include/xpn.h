@@ -27,6 +27,17 @@ int xpn_validate_profile(const char *profile_json);
 char *xpn_enroll(const char *invite, char *error, size_t error_size);
 void xpn_free(void *value);
 xpn *xpn_client_new(const char *profile_json, xpn_callbacks callbacks);
+/* Optional numeric dial address, set before xpn_run. Keeps the profile's HTTP
+ * Host, TLS hostname validation, SNI and certificate pins unchanged. */
+int xpn_client_set_address(xpn *instance, const char *address);
+/* Select v2 transport before xpn_run. Outer TLS is ALWAYS required. Turning
+ * inner_encryption off encrypts packets only in outer TLS; PSK TLS still
+ * authenticates the connection. require_pq requires hybrid outer key exchange
+ * and hybrid PSK authentication, with no classical fallback. */
+int xpn_client_set_encryption(xpn *instance, int inner_encryption, int require_pq);
+/* Enable v3 active/standby connections before xpn_run. Both authenticate and
+ * retain the selected encryption. Requires a v3 server; no silent downgrade. */
+int xpn_client_set_standby(xpn *instance, int enabled);
 /* Linux server uses a single TUN and calls xpn_send for packets coming from TUN.
  * control_socket is the Node Unix socket. listen_path includes any URL prefix. */
 xpn *xpn_server_new(int port, const char *control_socket, const char *listen_path, xpn_callbacks callbacks);

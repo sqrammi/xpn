@@ -1,6 +1,6 @@
 # Certificate pinning and custom SNI
 
-The Linux, macOS and iOS clients share the C transport. It can connect to one endpoint, send a different TLS SNI hostname, and authenticate the exact certificate you provisioned. The endpoint still determines DNS resolution, TCP destination and HTTP Host; SNI changes only the TLS ClientHello. For example:
+The Linux, macOS and iOS clients share the C transport. It can connect to one endpoint, send a different TLS SNI hostname, and authenticate the exact certificate you provisioned. The endpoint determines DNS resolution and HTTP Host; SNI changes only the TLS ClientHello. Apple clients resolve the endpoint before activating the full tunnel and pass its numeric address to the native connection. This changes only the TCP dial address: HTTP Host, unpinned hostname verification, custom SNI and pins remain based on the original profile. Reconnecting from the app refreshes that resolution. For example:
 
 ```json
 {

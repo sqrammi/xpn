@@ -2,7 +2,7 @@
 
 For the existing server checkout at `alta.jeffhansen.com:~/repo/xpn` and its current nginx/Let's Encrypt setup, start with [the alta deployment guide](ALTA-DEPLOYMENT.md). The VM workflow below remains useful for clean Noble/Resolute package validation afterward.
 
-Test before publishing. Use a dedicated Ubuntu VM or test host for the server and a separate client device/VM; the server deliberately blocks traffic to itself and to other VPN clients. Test the software on both **Noble (24.04 LTS)** and **Resolute (26.04 LTS)**. A package built on one series is not validation of the other.
+Test before publishing. Use a dedicated Ubuntu VM or test host for the server and a separate client device/VM; the server allows ping and selected TCP services on itself, and blocks other VPN clients. Use a separate host to test forwarding and NAT. Test the software on both **Noble (24.04 LTS)** and **Resolute (26.04 LTS)**. A package built on one series is not validation of the other.
 
 The repository includes a draft Debian source recipe producing exactly two user-facing packages:
 

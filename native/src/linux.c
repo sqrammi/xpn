@@ -73,8 +73,17 @@ int main(int argc,char **argv) {
         xpn_free(profile); return ok ? 0 : 1;
     }
     int server=argc==7 && !strcmp(argv[1],"server");
-    int client=argc==4 && !strcmp(argv[1],"client");
-    if(!server && !client) { fprintf(stderr,"Usage: xpnd server PORT SOCKET PATH TUN --loopback\n       xpnd client PROFILE TUN\n       xpnd enroll INVITATION NEW_PROFILE\n"); return 2; }
+    int client=argc>=4 && argc<=7 && !strcmp(argv[1],"client");
+    if(!server && !client) { fprintf(stderr,"Usage: xpnd server PORT SOCKET PATH TUN --loopback\n       xpnd client PROFILE TUN [--outer-only|--inner-encryption] [--require-pq] [--single-stream]\n       xpnd enroll INVITATION NEW_PROFILE\n"); return 2; }
+    int selected=0,inner=1,pq=0,standby=1;
+    if (client) for (int i=4;i<argc;i++) {
+        if (!strcmp(argv[i],"--single-stream")) { standby=0; continue; }
+        if (!strcmp(argv[i],"--outer-only")) inner=0;
+        else if (!strcmp(argv[i],"--inner-encryption")) inner=1;
+        else if (!strcmp(argv[i],"--require-pq")) pq=1;
+        else { fprintf(stderr,"Unknown client encryption option\n"); return 2; }
+        selected=1;
+    }
     if(server && strcmp(argv[6],"--loopback")) return 2;
     struct bridge b={ .fd=tun_open(server ? argv[5] : argv[3]) }; atomic_init(&b.stopping,0);
     if(b.fd<0) { perror("TUN (preconfigure the interface, or use the Linux launcher)"); return 1; }
@@ -82,6 +91,11 @@ int main(int argc,char **argv) {
     if(server) { char *end=NULL; long port=strtol(argv[2],&end,10); if(*end || port<1 || port>65535) { close(b.fd); return 2; } b.vpn=xpn_server_new((int)port,argv[3],argv[4],cb); }
     else { char *text=read_profile(argv[2]); if(text) { b.vpn=xpn_client_new(text,cb); xpn_free(text); } }
     if(!b.vpn) { fprintf(stderr,"Invalid configuration or native dependency initialization failure\n"); close(b.fd); return 1; }
+    if(client && selected && xpn_client_set_encryption(b.vpn,inner,pq)) {
+        fprintf(stderr,"Selected encryption is unavailable or conflicts with the device's hybrid policy\n");
+        xpn_destroy(b.vpn); close(b.fd); return 1;
+    }
+    if(client && xpn_client_set_standby(b.vpn,standby)) { xpn_destroy(b.vpn); close(b.fd); return 1; }
     signal(SIGINT,handle); signal(SIGTERM,handle); signal(SIGPIPE,SIG_IGN);
     pthread_t thread;
     if(pthread_create(&thread,NULL,reader,&b)) { xpn_destroy(b.vpn); close(b.fd); return 1; }

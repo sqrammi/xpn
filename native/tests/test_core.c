@@ -43,6 +43,14 @@ int main(void) {
     unsigned char packet[20]={0x45,0,0,20}; packet[12]=10;packet[13]=77;packet[15]=2;packet[16]=10;packet[17]=20;packet[19]=1;
     assert(packet_allowed(&p,packet,20)); packet[17]=21;assert(!packet_allowed(&p,packet,20)); packet[17]=20;packet[15]=3;assert(!packet_allowed(&p,packet,20));
     assert(!packet_allowed(&p,packet,19));
+    profile full=p; full.full=1;
+    packet[15]=2; packet[16]=10; packet[17]=77; packet[18]=0; packet[19]=1;
+    assert(packet_allowed(&full,packet,20)); /* gateway is filtered by host firewall */
+    assert(!packet_allowed(&p,packet,20)); /* split profile must explicitly authorize route */
+    packet[19]=3; assert(!packet_allowed(&full,packet,20)); /* other clients remain private */
+    packet[16]=169; packet[17]=254; packet[18]=169; packet[19]=254;
+    assert(!packet_allowed(&full,packet,20));
+    packet[16]=10; packet[17]=20; packet[18]=0; packet[19]=1;
     assert(profile_parse("{}",&p)==-1);
     handshake(0); handshake(1); puts("PSK mutual authentication, packet framing, spoof prevention and routing passed"); return 0;
 }

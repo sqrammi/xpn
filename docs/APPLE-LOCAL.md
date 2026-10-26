@@ -23,7 +23,7 @@ The repo has two app schemes, `XPN-macOS` and `XPN-iOS`. Each embeds a packet tu
    cd /Users/ninkid/repo/xpn
    ```
 
-The current `XPNNative.xcframework` in this checkout contains self-contained static libraries for both macOS architectures, built on 2026-10-25. It does not yet contain iOS slices. Native tests, the universal unsigned Release build, and the signed ARM Debug app/extension build passed. The signed client launched successfully. The older Homebrew-linked framework was backed up by the packaging script.
+The current `XPNNative.xcframework` in this checkout contains self-contained static libraries for both macOS architectures, rebuilt on 2026-10-26 with paired connections and the packet-framing correction. It does not yet contain iOS slices. Native tests, the universal unsigned Release build, and the signed ARM Debug app/extension build passed. The signed client launched successfully. The older Homebrew-linked framework was backed up by the packaging script.
 
 ## 2. Build the native dependencies and framework
 
@@ -63,7 +63,7 @@ Find your ten-character Team ID in your Apple Developer membership details. Choo
 
 The initial signing attempt selected Personal Team `B9PJSFMM8M`, which cannot provision Network Extensions. The local overlay now uses the account's **Soundvision Technologies LLC** team, `PHZ3789J83`, for all four targets. Apple accepted the company team and provisioned this Mac and the macOS extension. Complete any macOS Keychain prompt for `codesign` locally using your login password; do not paste that password into a terminal command or chat. A successful unsigned build is still insufficient to run the VPN.
 
-The signed Debug build is now at `build/xcode-macos/Build/Products/Debug/XPN-macOS.app`. Its signatures were verified and the app was launched. This is a development build for the registered Mac; it is not a notarized public download. Enrollment and a live packet-tunnel connection remain to be tested against the deployed server.
+The signed Debug build is now at `build/xcode-macos/Build/Products/Debug/XPN-macOS.app`. Its signatures were verified and the app was launched. This is a development build for the registered Mac; it is not a notarized public download. A live full-tunnel Mac connection to Alta now passes gateway ping, HTTPS and SSH checks. The DNS startup fix reduced the measured connection from a 30-second resolver stall to about 3.4 seconds; see [validation](VALIDATION.md). iOS and broader routing/throughput acceptance checks remain.
 
 ```sh
 python3 native/tools/apple-project.py YOURTEAMID com.jeffhansen.xpn
@@ -98,10 +98,32 @@ Regenerate later with `xcodegen generate --spec clients/apple/project.local.yml`
 1. Select scheme **XPN-macOS** and destination **My Mac**. Select the app scheme, not `XPN-macOS-Tunnel`.
 2. Choose **Product → Build** (⌘B). Fix dependency or signing errors first.
 3. Choose **Product → Run** (⌘R). If macOS asks to allow the VPN configuration, approve it as part of this test.
-4. Import a test device's JSON profile or scan its one-use QR. Your Mac needs a camera for scanning; JSON import works without one.
-5. Start with a split route to a separate reachable test host. Connect and inspect Xcode's console. Exercise the acceptance checklist in [local testing](LOCAL-TESTING.md).
+4. Scan the one-use QR, paste an invitation link or profile JSON and click **Add connection**, or choose **Import JSON** and select `xpn-profile.json`. Downloading a profile from the web join page already redeems the invitation; import that profile instead of redeeming the same invitation again. Your Mac needs a camera for scanning; JSON import works without one.
+5. Leave **TLS encryption** enabled (it is locked on). **Additional encryption** controls the inner ChaCha20-Poly1305 packet layer; **Require post-quantum key exchange** requires ML-KEM with no fallback. Changes apply on reconnect and are remembered per device. A server-required hybrid policy locks both protections on.
+6. New builds automatically maintain one active and one authenticated standby connection. The server must support XPN v3; Alta has been updated. A healthy spare can take over when measured active latency exceeds 500 ms. TCP keepalives use 15-second defaults; see [protocol details](PROTOCOL.md#activestandby-connections-v3).
+7. Start with a split route to a separate reachable test host. Connect and inspect Xcode's console. Exercise the acceptance checklist in [local testing](LOCAL-TESTING.md).
 
 Use Xcode/Console to inspect the embedded extension when the app launches but the tunnel fails. An unsigned app can build successfully but cannot establish a usable Network Extension tunnel. A Keychain error usually needs checking the app and extension's actual signed groups/profiles, not granting broader filesystem permissions.
+
+### Accessing devices on the local LAN
+
+Local network access is always enabled on Mac and iPhone, including in full-tunnel mode. There is no checkbox or preference to disable it. Reopen the updated app and reconnect once to apply the policy to an existing VPN configuration; unchanged reconnects do not save it again. Earlier saved checkbox values are ignored.
+
+The app explicitly sets Apple's `excludeLocalNetworks` property alongside `includeAllNetworks`, rather than relying on different macOS/iOS defaults. It does not hard-code RFC1918 ranges or bypass all private addresses: other networks reachable only through the VPN stay governed by the tunnel routes. A LAN address range can be locally connected even if it is not RFC1918 space; this Mac's `172.9.0.0/16` is one such example. Routed networks behind another LAN gateway may need separate route policy and are not promised by this directly connected LAN setting.
+
+Previously, full mode set `includeAllNetworks` but never enabled the local-network exception. On macOS that exception defaults off, so traffic could be captured despite a more-specific LAN route. Current route inspection while disconnected showed `172.9.0.0/16` on `en0`, with gateway `172.9.0.1`. A successful disconnected ping alone does not validate behavior while the VPN policy is active; test the same host after reconnecting. Local IPv6 may also be excluded by the system's LAN exception; Internet IPv6 remains blocked by this IPv4-only tunnel.
+
+See [Apple's routing guidance](https://developer.apple.com/documentation/networkextension/routing-your-vpn-network-traffic).
+
+### Repeated password prompts
+
+The October 26 Keychain fix changes profile storage to the Data Protection Keychain with the app/extension's shared access group. Earlier builds used the legacy login Keychain; its access list trusted only the main app, so every new tunnel process asked permission to read `XPN.profile`. System logs confirmed this on the affected Mac.
+
+Quit and reopen the updated app, then Connect once. The containing app automatically copies an existing legacy profile to the shared protected store. A one-time migration prompt is possible; the old item is retained as a recovery copy. The tunnel never falls back to the legacy store. Subsequent connections should not request the Keychain password. New imports save directly to shared storage, with device-only accessibility after first unlock. No PSK is moved into preferences or plaintext files, and no credentials are rotated.
+
+Unchanged connections also reuse the existing VPN configuration instead of calling `saveToPreferences` every time. macOS may still require its normal authorization when first adding a VPN or changing its endpoint/routing/encryption settings. This change does not disable system authorization or bypass a locked Keychain. If access fails, the app reports the Keychain status rather than repeatedly trying a legacy read.
+
+[Apple's Keychain implementation guidance](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains) explains the distinction between legacy access lists and Data Protection access groups.
 
 This macOS target uses an **app extension**, appropriate for development testing and the App Store distribution path. Public direct-download **Developer ID** distribution needs the system-extension variant of packet tunnels, which this repo does not yet implement. [Apple's deployment table](https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment) distinguishes those paths.
 

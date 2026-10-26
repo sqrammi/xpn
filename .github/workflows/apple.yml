@@ -10,6 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install cmake ninja pkg-config xcodegen
+      - name: Test invitation and profile input handling
+        run: |
+          swiftc clients/apple/Shared/ConnectionInput.swift clients/apple/Tests/ConnectionInputTests.swift -o /tmp/xpn-input-tests
+          /tmp/xpn-input-tests
+          swiftc clients/apple/Shared/EndpointResolver.swift clients/apple/Tests/EndpointResolverTests.swift -o /tmp/xpn-resolver-tests
+          /tmp/xpn-resolver-tests
+          swiftc clients/apple/Shared/TunnelPreferences.swift clients/apple/Tests/TunnelPreferencesTests.swift -o /tmp/xpn-preferences-tests
+          /tmp/xpn-preferences-tests
+          swiftc clients/apple/Shared/ProfileKeychain.swift clients/apple/Tests/ProfileKeychainTests.swift -o /tmp/xpn-keychain-tests
+          /tmp/xpn-keychain-tests
       - name: Build pinned native dependency SDKs
         run: sh native/tools/apple-dependencies.sh
         env:

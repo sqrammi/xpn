@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'deploy/network.sh'
 
 
 class NetworkLifecycle(unittest.TestCase):
-    def invoke(self, action, present):
+    def invoke(self, action, present, ports='22,443'):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stub = '''#!/usr/bin/env python3
@@ -29,7 +29,7 @@ if (name=='nft' and args[:2]==['list','table']) or (name=='ip' and args[:2]==['l
                 path.write_text(stub)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
-                       XPN_TEST_LOG=str(root / 'log'), XPN_TEST_PRESENT=str(int(present)), XPN_WAN_IFACE='eth0')
+                       XPN_TEST_LOG=str(root / 'log'), XPN_TEST_PRESENT=str(int(present)), XPN_WAN_IFACE='eth0', XPN_HOST_TCP_PORTS=ports)
             result = subprocess.run(['sh', str(SCRIPT), action], env=env, capture_output=True, text=True)
             import json
             log = [json.loads(line) for line in (root / 'log').read_text().splitlines()] if (root / 'log').exists() else []
@@ -55,6 +55,10 @@ if (name=='nft' and args[:2]==['list','table']) or (name=='ip' and args[:2]==['l
         self.assertIn('delete table inet xpn', rules)
         self.assertIn('table inet xpn', rules)
         self.assertNotIn('flush ruleset', rules)
+        self.assertIn('tcp dport { 22,443 } accept', rules)
+        self.assertIn('icmp type echo-request limit rate', rules)
+        self.assertIn('ip daddr { 127.0.0.0/8, 169.254.0.0/16 } drop', rules)
+        self.assertLess(rules.index('tcp dport'), rules.index('iifname "xpn0" drop'))
         self.assertFalse(any(cmd == 'ip' and args[:2] == ['tuntap', 'add'] for cmd, args, _ in log))
 
     def test_unknown_action_changes_nothing(self):
@@ -67,6 +71,16 @@ if (name=='nft' and args[:2]==['list','table']) or (name=='ip' and args[:2]==['l
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(('ip', ['tuntap', 'add', 'dev', 'xpn0', 'mode', 'tun', 'user', 'xpn']),
                       [(cmd, args) for cmd, args, _ in log])
+
+    def test_custom_host_ports_and_invalid_values(self):
+        result, log = self.invoke('start', True, '85,443')
+        self.assertEqual(result.returncode, 0)
+        rules = next(body for cmd, args, body in log if cmd == 'nft' and args == ['-f', '-'])
+        self.assertIn('tcp dport { 85,443 } accept', rules)
+        for ports in ('443; flush ruleset', '0', '65536', '85,,443', '85,'):
+            result, log = self.invoke('start', True, ports)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(log, [])
 
 
 if __name__ == '__main__':

@@ -34,6 +34,9 @@ def main():
     p.add_argument('--invitation', help='Prefer --scan to avoid putting secrets in shell history')
     p.add_argument('--scan', action='store_true')
     p.add_argument('--native', default='/usr/local/bin/xpnd')
+    p.add_argument('--inner-encryption', choices=['on', 'off'], help='Extra ChaCha20-Poly1305 packet encryption; outer TLS always remains on')
+    p.add_argument('--require-pq', action='store_true', help='Require hybrid ML-KEM key exchange; never fall back')
+    p.add_argument('--single-stream', action='store_true', help='Disable the default authenticated standby (for older servers)')
     args = p.parse_args()
     if args.action == 'enroll':
         invitation = camera() if args.scan else args.invitation or input('Invitation: ').strip()
@@ -74,7 +77,14 @@ def main():
                 command += ['dev', route['dev']]
                 run(*command)
                 undo('ip', 'route', 'del', ip + '/32')
-        proc = subprocess.Popen([args.native, 'client', str(args.profile), interface], stdout=subprocess.PIPE, text=True)
+        native_command = [args.native, 'client', str(args.profile), interface]
+        if args.single_stream:
+            native_command.append('--single-stream')
+        if args.inner_encryption is not None:
+            native_command.append('--inner-encryption' if args.inner_encryption == 'on' else '--outer-only')
+        if args.require_pq or (args.inner_encryption is not None and profile.get('mode') == 'hybrid'):
+            native_command.append('--require-pq')
+        proc = subprocess.Popen(native_command, stdout=subprocess.PIPE, text=True)
         if not select.select([proc.stdout], [], [], 25)[0] or proc.stdout.readline().strip() != 'CONNECTED':
             raise RuntimeError('Native TLS tunnel did not authenticate')
         if full:

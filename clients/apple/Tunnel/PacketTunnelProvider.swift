@@ -1,5 +1,6 @@
 import Foundation
 import NetworkExtension
+import OSLog
 
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var native: OpaquePointer?
@@ -7,6 +8,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let lock = NSLock()
     private var completion: ((Error?) -> Void)?
     private var profile: [String: Any] = [:]
+    private var serverAddress = ""
+    private var startedAt = Date()
+    private let logger = Logger(subsystem: "com.jeffhansen.xpn", category: "Connection")
     private var stopRequested = false
     private var stopping: Bool {
         get { lock.lock(); defer { lock.unlock() }; return stopRequested }
@@ -15,6 +19,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         completion = completionHandler
+        startedAt = Date()
         stopping = false
         do {
             let stored = try ProfileStore.load()
@@ -22,6 +27,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                   let decoded = try JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any] else { throw ProfileStore.failure("Invalid XPN profile") }
             profile = decoded
             let configuration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration ?? [:]
+            serverAddress = try configuration["resolvedServerAddress"] as? String ?? EndpointResolver.resolve(profile["endpoint"] as! String)
             if let full = configuration["fullTunnel"] { profile["fullTunnel"] = full }
             if let routes = configuration["routes"] { profile["routes"] = routes }
             let text = String(data: try JSONSerialization.data(withJSONObject: profile), encoding: .utf8)!
@@ -43,6 +49,22 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
             }
             guard let instance = text.withCString({ xpn_client_new($0, callbacks) }) else { throw ProfileStore.failure("Invalid profile, unsupported crypto mode, or missing native dependencies") }
+            if let inner = configuration["innerEncryption"] as? Bool {
+                let pq = configuration["requirePQ"] as? Bool ?? false
+                guard xpn_client_set_encryption(instance, inner ? 1 : 0, pq ? 1 : 0) == 0 else {
+                    xpn_destroy(instance)
+                    throw ProfileStore.failure("Selected encryption is unsupported or conflicts with the server's required hybrid protection")
+                }
+            }
+            guard serverAddress.withCString({ xpn_client_set_address(instance, $0) }) == 0 else {
+                xpn_destroy(instance)
+                throw ProfileStore.failure("Invalid resolved VPN server address. Reconnect from the XPN app.")
+            }
+            guard xpn_client_set_standby(instance, 1) == 0 else {
+                xpn_destroy(instance)
+                throw ProfileStore.failure("Cannot initialize the standby VPN connection")
+            }
+            logger.info("Transport starting after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds")
             lock.lock(); native = instance; lock.unlock()
             service.async { [self] in
                 let result = xpn_run(instance)
@@ -56,7 +78,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         guard !stopping else { return }
         do {
             let full = profile["fullTunnel"] as? Bool ?? false
-            let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.77.0.1")
+            logger.info("Authenticated after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds")
+            let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: serverAddress)
             settings.mtu = 1400
             let ipv4 = NEIPv4Settings(addresses: [profile["address"] as! String], subnetMasks: ["255.255.255.255"])
             ipv4.includedRoutes = full ? [.default()] : try (profile["routes"] as? [String] ?? []).map { route in
@@ -78,6 +101,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 DispatchQueue.main.async {
                     guard !self.stopping else { return }
                     if let error { self.fail(error); return }
+                    self.logger.info("Network configured after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds")
                     let handler = self.completion; self.completion = nil; handler?(nil); self.readPackets()
                 }
             }

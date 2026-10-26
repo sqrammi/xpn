@@ -84,7 +84,7 @@ def main():
             ns(proc, 'ip', 'addr', 'add', f'{network}.2/24', 'dev', 'peer0')
             ns(proc, 'ip', 'link', 'set', 'peer0', 'up')
         # No return route to the VPN pool on the WAN: successful HTTP requires NAT.
-        run('sh', ROOT / 'deploy/network.sh', env={**os.environ, 'XPN_WAN_IFACE': 'test-wan'})
+        run('sh', ROOT / 'deploy/network.sh', env={**os.environ, 'XPN_WAN_IFACE': 'test-wan', 'XPN_HOST_TCP_PORTS': '8444'})
         run('openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256',
             '-nodes', '-days', '1', '-subj', '/CN=unrelated.example.invalid',
             '-keyout', directory / 'key.pem', '-out', directory / 'cert.pem', stdout=sp.DEVNULL, stderr=sp.DEVNULL)
@@ -108,6 +108,11 @@ proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; pro
         web.mkdir()
         payload = web / 'payload'
         payload.write_bytes(os.urandom(1024 * 1024))
+        for port in (8444, 8445):
+            start(['python3', '-m', 'http.server', str(port), '--bind', '0.0.0.0', '--directory', web], f'host-{port}')
+            wait_for(lambda: run('curl', '--noproxy', '*', '--silent', '--fail', '--max-time', '1',
+                                 f'http://127.0.0.1:{port}/payload', stdout=sp.DEVNULL, check=False).returncode == 0,
+                     f'host HTTP port {port}')
         start(['nsenter', '-t', wan_ns.pid, '-n', '--', 'python3', '-m', 'http.server', '8080',
                '--bind', '192.0.2.2', '--directory', web], 'http')
         wait_for(lambda: ns(wan_ns, 'curl', '--noproxy', '*', '--silent', '--fail',
@@ -119,7 +124,12 @@ proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; pro
             ns(client_ns, 'ip', 'addr', 'add', f'10.77.0.{index}/32', 'dev', 'testvpn')
             route = '192.0.2.0/24' if mode == 'split' else 'default'
             ns(client_ns, 'ip', 'route', 'add', route, 'dev', 'testvpn')
-            client = start(['nsenter', '-t', client_ns.pid, '-n', '--', binary, 'client', control / f'{mode}.json', 'testvpn'], mode)
+            if mode == 'split': ns(client_ns, 'ip', 'route', 'add', '10.77.0.1/32', 'dev', 'testvpn')
+            options = []
+            if os.environ.get('XPN_TEST_INNER') in ('0', '1'):
+                options.append('--outer-only' if os.environ['XPN_TEST_INNER'] == '0' else '--inner-encryption')
+            if os.environ.get('XPN_TEST_PQ') == '1': options.append('--require-pq')
+            client = start(['nsenter', '-t', client_ns.pid, '-n', '--', binary, 'client', control / f'{mode}.json', 'testvpn', *options], mode)
             wait_for(lambda: 'CONNECTED' in (directory / f'{mode}.log').read_text(), f'{mode} authentication', client)
             for task in Path(f'/proc/{server.pid}/task').iterdir():
                 status = dict(line.split(':', 1) for line in (task / 'status').read_text().splitlines() if ':' in line)
@@ -130,10 +140,30 @@ proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; pro
             ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--show-error',
                '--retry', '3', '--retry-connrefused', '--max-time', '15', '-o', output, 'http://192.0.2.2:8080/payload')
             assert output.read_bytes() == payload.read_bytes(), 'Tunneled payload mismatch'
+            for address in ('10.77.0.1', '192.0.2.1'):
+                ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '5', '-o', output,
+                   f'http://{address}:8444/payload')
+                assert output.read_bytes() == payload.read_bytes(), 'Server-host payload mismatch'
+                assert ns(client_ns, 'curl', '--noproxy', '*', '--silent', '--max-time', '1',
+                          f'http://{address}:8445/payload', stdout=sp.DEVNULL, check=False).returncode != 0, 'Private host port exposed'
+            # iputils-ping is not needed: build an ICMP echo on a raw socket in the test namespace.
+            ping = '''import socket,struct
+s=socket.socket(socket.AF_INET,socket.SOCK_RAW,socket.IPPROTO_ICMP); s.settimeout(3)
+packet=struct.pack('!BBHHH',8,0,0,1234,1)
+total=sum(struct.unpack('!4H',packet)); total=(total>>16)+(total&65535); total+=(total>>16)
+packet=struct.pack('!BBHHH',8,0,(~total)&65535,1234,1)
+s.sendto(packet,('10.77.0.1',0))
+while True:
+ data,source=s.recvfrom(2048)
+ if source[0]=='10.77.0.1' and data[20]==0 and data[24:28]==packet[4:8]: break
+'''
+            ns(client_ns, 'python3', '-c', ping)
+            print(f'PASS: {mode} server tunnel/WAN address access, ping and private host-port isolation', flush=True)
             print(f'PASS: {mode} routing, pinned custom-SNI WSS, real TUN, NAT and non-root server threads', flush=True)
             client.terminate()
             client.wait(timeout=5)
             ns(client_ns, 'ip', 'route', 'del', route, 'dev', 'testvpn')
+            if mode == 'split': ns(client_ns, 'ip', 'route', 'del', '10.77.0.1/32', 'dev', 'testvpn')
             ns(client_ns, 'ip', 'addr', 'del', f'10.77.0.{index}/32', 'dev', 'testvpn')
     except BaseException:
         for path in directory.glob('*.log'):

@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#include "xpn.h"
+#include "internal.h"
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -41,6 +41,13 @@ static void wait_for(int *value) {
     while(!*value) assert(pthread_cond_timedwait(&changed,&lock,&limit)==0);
     pthread_mutex_unlock(&lock);
 }
+static void wait_counter(atomic_uint *value,unsigned minimum) {
+    uint64_t until=monotonic_ms()+15000;
+    while (atomic_load(value)<minimum && monotonic_ms()<until) {
+        struct timespec delay={0,100000000}; nanosleep(&delay,NULL);
+    }
+    assert(atomic_load(value)>=minimum);
+}
 int main(int argc,char **argv) {
     assert(argc==5); assert(xpn_global_init()==0); assert(xpn_set_ca_file(argv[3])==0);
     char invitation[4096],error[256]; FILE *file=fopen(argv[4],"rb"); assert(file);
@@ -52,6 +59,17 @@ int main(int argc,char **argv) {
     pthread_t server_thread,client_thread;
     assert(!pthread_create(&server_thread,NULL,service,server));
     client=xpn_client_new(profile,(xpn_callbacks){client_packet,client_state,NULL}); assert(client); xpn_free(profile);
+    if (getenv("XPN_TEST_INNER")) {
+        int inner=atoi(getenv("XPN_TEST_INNER")),pq=getenv("XPN_TEST_PQ") ? atoi(getenv("XPN_TEST_PQ")) : 0;
+        assert(xpn_client_set_encryption(client,inner,pq)==0);
+    }
+    if (getenv("XPN_TEST_STANDBY")) assert(!xpn_client_set_standby(client,1));
+    const char *dial=getenv("XPN_TEST_CONNECT_ADDRESS");
+    if (dial) {
+        assert(xpn_client_set_address(client,"not-an-address") == -1);
+        assert(xpn_client_set_address(server,dial) == -1);
+        assert(xpn_client_set_address(client,dial) == 0);
+    }
     assert(!pthread_create(&client_thread,NULL,service,client));
     if (getenv("XPN_TEST_EXPECT_REJECTION")) {
         wait_for(&disconnected);
@@ -63,6 +81,17 @@ int main(int argc,char **argv) {
     wait_for(&connected);
     unsigned char packet[20]={0x45,0,0,20}; packet[12]=10;packet[13]=77;packet[15]=2;packet[16]=10;packet[17]=20;packet[19]=1;
     assert(xpn_send(client,packet,20)==0); wait_for(&received);
+    if (getenv("XPN_TEST_STANDBY")) {
+        wait_counter(&client->ready_links,2);
+        puts("STANDBY_READY"); fflush(stdout);
+        if (getenv("XPN_TEST_FAILOVER")) {
+            puts("STALL_PRIMARY"); fflush(stdout);
+            wait_counter(&client->switch_count,1);
+            struct timespec settle={1,0}; nanosleep(&settle,NULL);
+            wait_counter(&client->ready_links,2);
+            puts("FAILOVER_COMPLETE"); fflush(stdout);
+        }
+    }
     const char *idle=getenv("XPN_TEST_IDLE_SECONDS");
     if(idle) {
         long seconds=strtol(idle,NULL,10); assert(seconds>=0 && seconds<=30);

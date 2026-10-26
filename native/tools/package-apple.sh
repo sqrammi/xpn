@@ -30,7 +30,7 @@ for XPN_SLICE in $XPN_SLICES; do
         }
     done
     mkdir -p "$XPN_BUILD/$XPN_SLICE"
-    for XPN_SOURCE in core transport profile certificate; do
+    for XPN_SOURCE in core transport standby profile certificate; do
         xcrun --sdk "$XPN_SDK" clang -target "$XPN_TARGET" -arch "$XPN_ARCH" \
             -isysroot "$(xcrun --sdk "$XPN_SDK" --show-sdk-path)" \
             -std=c11 -O3 -fvisibility=hidden -D_POSIX_C_SOURCE=200809L -D_DARWIN_C_SOURCE \

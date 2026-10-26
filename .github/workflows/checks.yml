@@ -43,11 +43,27 @@ jobs:
           # The service account cannot traverse a private runner home directory.
           # Expose this checkout read-only in a private mount namespace.
           sudo env PATH="$PATH" ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
+          sudo env PATH="$PATH" XPN_TEST_INNER=0 ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
       - name: Certificate pinning and custom SNI through nginx
         run: |
           for scenario in sni wrong-pin trusted-wrong-pin rotation pin-only; do
             XPN_TEST_PINNING="$scenario" node server/native-integration.mjs /tmp/xpn-build/test_transport || exit 1
           done
+      - name: Optional inner encryption without downgrade fallback
+        run: |
+          for inner in 0 1; do
+            for scenario in sni wrong-pin trusted-wrong-pin; do
+              XPN_TEST_INNER="$inner" XPN_TEST_PINNING="$scenario" node server/native-integration.mjs /tmp/xpn-build/test_transport || exit 1
+            done
+          done
+      - name: Authenticated standby with latency and disconnect failover
+        run: |
+          for inner in 0 1; do
+            for fault in delay drop; do
+              XPN_TEST_STANDBY=1 XPN_TEST_INNER="$inner" XPN_TEST_PINNING=sni XPN_TEST_FAILOVER="$fault" node server/native-integration.mjs /tmp/xpn-build/test_transport || exit 1
+            done
+          done
+          XPN_TEST_STANDBY=1 XPN_TEST_PINNING=wrong-pin node server/native-integration.mjs /tmp/xpn-build/test_transport
       - uses: actions/upload-artifact@v4
         with:
           name: native-linux-debug
