@@ -4,6 +4,9 @@ from contextlib import ExitStack
 from pathlib import Path
 import shutil
 import subprocess
+import socket
+import sys
+import errno
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -106,6 +109,7 @@ class InstallerTests(unittest.TestCase):
                                 locations.chmod(0o600)
                                 (root / 'units/xpn-control.service').chmod(0o600)
                             if repeat == 'control': (source / 'server/main.mjs').write_text('// changed source')
+                            if repeat == 'host-ports': argv.extend(['--host-tcp-ports', '85,443,5201'])
                             if repeat == 'health-failure':
                                 opener.open.return_value.__enter__.return_value.status = 503
                                 with self.assertRaisesRegex(ValueError, 'health check'): installer.main()
@@ -129,6 +133,12 @@ class InstallerTests(unittest.TestCase):
                             elif repeat == 'control':
                                 self.assertEqual(mutations, [('systemctl', 'stop', 'xpn-native', 'xpn-control'),
                                                              ('systemctl', 'start', 'xpn-control', 'xpn-native')])
+                            elif repeat == 'host-ports':
+                                self.assertEqual(mutations, [('systemctl', 'stop', 'xpn-native', 'xpn-network'),
+                                                             ('systemctl', 'daemon-reload'),
+                                                             ('systemctl', 'start', 'xpn-network', 'xpn-native')])
+                                self.assertIn('Environment=XPN_HOST_TCP_PORTS=85,443,5201', (root / 'units/xpn-network.service').read_text())
+                                self.assertEqual(env.read_bytes(), before[env][0])
 
     def test_complete_install_orchestration(self): self.simulate_install()
 
@@ -137,6 +147,28 @@ class InstallerTests(unittest.TestCase):
     def test_missing_nginx_include_repairs_only_that_file_and_reloads(self): self.simulate_install(repeat='repair', build=True)
 
     def test_control_change_restarts_control_and_dependent_not_network(self): self.simulate_install(repeat='control', build=True)
+
+    def test_host_port_change_restarts_network_and_native_only(self): self.simulate_install(repeat='host-ports', build=True)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux socket restart semantics')
+    def test_port_probe_accepts_time_wait_but_rejects_live_listener(self):
+        with socket.socket() as listener, socket.socket() as client:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(('127.0.0.1', 0)); listener.listen(1)
+            address = listener.getsockname()
+            with self.assertRaises(OSError) as busy:
+                installer.check_port_available(address[1])
+            self.assertEqual(busy.exception.errno, errno.EADDRINUSE)
+            client.settimeout(2); client.connect(address)
+            peer, _ = listener.accept()
+            peer.close()
+            self.assertEqual(client.recv(1), b'')
+        # Reproduce the old false conflict, then verify the real restart probe.
+        with socket.socket() as old_probe:
+            with self.assertRaises(OSError) as stale:
+                old_probe.bind(address)
+            self.assertEqual(stale.exception.errno, errno.EADDRINUSE)
+        installer.check_port_available(address[1])
 
     def test_noop_health_failure_does_not_stop_healthy_services(self): self.simulate_install(repeat='health-failure', build=True)
 

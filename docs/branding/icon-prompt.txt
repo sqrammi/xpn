@@ -1,0 +1,5 @@
+Generated with the built-in image_gen tool, October 26, 2026.
+Source: xpn-icon-original.png. Apple derivatives: run python3 native/tools/apple-icons.py.
+
+Prompt:
+Use case: logo-brand. Asset: finished square iOS app icon for the VPN project XPN. Create one centered minimalist padlock emblem. The lock body is a solid softly rounded rectangular shape with a small simple keyhole. Crucially, the top shackle is not an ordinary inverted U: its two rounded curved arms sweep diagonally and CROSS one another, forming a clearly legible X above the lock body, with the lower ends attached to the lock's two shoulders. The X must be formed by the curved metal-like shackle itself, not a separate letter placed on the lock. Strong simple silhouette, balanced negative space, crisp broad strokes readable at small size. Premium restrained flat graphic finish, light emblem on a solid dark background, subtle dimensional highlights optional. No text or lettering, no mockup, no border, no pre-rounded outer corners. Full-bleed opaque square canvas, 1024 by 1024, generous safe margins around centered emblem. Output only one final icon.

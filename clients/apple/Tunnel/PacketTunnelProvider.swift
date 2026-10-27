@@ -21,18 +21,28 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         completion = completionHandler
         startedAt = Date()
         stopping = false
+        logger.info("Tunnel startup requested")
+        service.async { [self] in prepareAndRun() }
+    }
+    private func prepareAndRun() {
         do {
-            let stored = try ProfileStore.load()
+            guard !stopping else { throw ProfileStore.failure("Connection cancelled during startup") }
+            let configuration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration ?? [:]
+            let stored: String
+            if let id = configuration["connectionID"] as? String {
+                stored = try ProfileStore.loadConnection(id)
+            } else {
+                stored = try ProfileStore.load() // Existing system VPN entries.
+            }
+            logger.info("Tunnel profile loaded after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds")
             guard stored.withCString({ xpn_validate_profile($0) }) == 0,
                   let decoded = try JSONSerialization.jsonObject(with: Data(stored.utf8)) as? [String: Any] else { throw ProfileStore.failure("Invalid XPN profile") }
             profile = decoded
-            let configuration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration ?? [:]
             serverAddress = try configuration["resolvedServerAddress"] as? String ?? EndpointResolver.resolve(profile["endpoint"] as! String)
             if let full = configuration["fullTunnel"] { profile["fullTunnel"] = full }
             if let routes = configuration["routes"] { profile["routes"] = routes }
             let text = String(data: try JSONSerialization.data(withJSONObject: profile), encoding: .utf8)!
-            if let path = Bundle.main.path(forResource: "cacert", ofType: "pem") { _ = path.withCString { xpn_set_ca_file($0) } }
-            _ = xpn_global_init()
+            try NativeRuntime.prepare()
             var callbacks = xpn_callbacks()
             callbacks.opaque = Unmanaged.passUnretained(self).toOpaque()
             callbacks.packet = { opaque, bytes, size in
@@ -40,12 +50,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 let owner = Unmanaged<PacketTunnelProvider>.fromOpaque(opaque).takeUnretainedValue()
                 owner.packetFlow.writePackets([Data(bytes: bytes, count: size)], withProtocols: [NSNumber(value: AF_INET)])
             }
-            callbacks.state = { opaque, ready, _ in
+            callbacks.state = { opaque, ready, message in
                 guard let opaque else { return }
                 let owner = Unmanaged<PacketTunnelProvider>.fromOpaque(opaque).takeUnretainedValue()
+                let detail = message.map { String(cString: $0) } ?? "Tunnel closed. Reconnect to establish fresh session keys."
                 DispatchQueue.main.async {
                     if ready != 0 { owner.configureNetwork() }
-                    else if !owner.stopping { owner.fail(ProfileStore.failure("Tunnel closed. Reconnect to establish fresh session keys.")) }
+                    else if !owner.stopping { owner.fail(ProfileStore.failure(detail)) }
                 }
             }
             guard let instance = text.withCString({ xpn_client_new($0, callbacks) }) else { throw ProfileStore.failure("Invalid profile, unsupported crypto mode, or missing native dependencies") }
@@ -65,15 +76,23 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 throw ProfileStore.failure("Cannot initialize the standby VPN connection")
             }
             logger.info("Transport starting after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds")
-            lock.lock(); native = instance; lock.unlock()
-            service.async { [self] in
-                let result = xpn_run(instance)
-                lock.lock(); native = nil; lock.unlock()
+            lock.lock()
+            if stopRequested {
+                lock.unlock()
                 xpn_destroy(instance)
-                if result != 0 { DispatchQueue.main.async { [self] in if !stopping { fail(ProfileStore.failure("Native transport failed")) } } }
+                throw ProfileStore.failure("Connection cancelled during startup")
             }
-        } catch { fail(error) }
+            native = instance
+            lock.unlock()
+            let result = xpn_run(instance)
+            lock.lock(); native = nil; lock.unlock()
+            xpn_destroy(instance)
+            if result != 0 { DispatchQueue.main.async { [self] in if !stopping { fail(ProfileStore.failure("Native transport failed")) } } }
+        } catch {
+            DispatchQueue.main.async { [self] in fail(error) }
+        }
     }
+
     private func configureNetwork() {
         guard !stopping else { return }
         do {
@@ -121,6 +140,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
     private func fail(_ error: Error) {
+        let detail = error as NSError
+        logger.error("Tunnel failed after \(Date().timeIntervalSince(self.startedAt), privacy: .public) seconds: \(detail.domain, privacy: .public) code \(detail.code, privacy: .public)")
         stopping = true
         let handler = completion; completion = nil
         lock.lock(); if let native { xpn_stop(native) }; lock.unlock()

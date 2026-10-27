@@ -378,11 +378,21 @@ def install_node(source, changes):
     return destination / 'bin/node'
 
 
+def check_port_available(port):
+    # Match the server's restart semantics: recently closed accepted sockets
+    # may remain in TIME_WAIT, but must not prevent rebinding the listener.
+    # Do not use SO_REUSEPORT; an actual competing listener must still fail.
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(('127.0.0.1', port))
+        probe.listen(1)
+
+
 def available_port(preferred, reserved):
     for port in range(preferred, preferred + 100):
         if port in reserved or port > 65535: continue
         try:
-            with socket.socket() as s: s.bind(('127.0.0.1', port))
+            check_port_available(port)
             return port
         except OSError: pass
     raise ValueError('No available backend port; specify --control-port / --native-port')
@@ -563,7 +573,10 @@ def install(args):
         stop(needs_restart, 'configuration, runtime files or network resources changed')
         for unit, port in (('xpn-control', control_port), ('xpn-native', native_port)):
             if unit not in active or unit in stopped:
-                with socket.socket() as sock: sock.bind(('127.0.0.1', port))
+                try:
+                    check_port_available(port)
+                except OSError as error:
+                    raise ValueError(f'{unit} cannot bind backend 127.0.0.1:{port}: {error}. Check existing listeners on this port.') from error
         changes.write(ENV, env_text, 0o600, 'admin/database credentials and server settings; existing values preserved')
         for path, body in units.items():
             reason = ('network setup service' if path.stem == 'xpn-network' else

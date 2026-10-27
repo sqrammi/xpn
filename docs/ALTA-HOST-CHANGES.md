@@ -96,6 +96,23 @@ Retained evidence: `build/encryption-options-*.log`, `build/encryption-framing-*
 
 For rollback, preserve credentials/database, rebuild the selected older source and rerun the installer while clients are disconnected; review the saved nginx snippet before restoring it. Configuration backups do not revert binaries. No rollback was performed. No PPA upload, Git push, SMTP email or cloud control-plane change occurred.
 
+## Iperf host-port installation repair — October 26, 22:15 UTC
+
+The user's run at `/var/backups/xpn/20261026T220604966207Z/` failed with `Address already in use` and rolled back, leaving only host TCP ports 85/443 allowed. Read-only inspection and disposable loopback-socket tests reproduced a false conflict from recently closed connections; no production service was stopped for that reproduction.
+
+1. Ran 27 installer/network tests successfully in the existing checkout. Evidence: `build/installer-port-fix-tests.log`. The socket regression used temporary ephemeral loopback ports; it did not change host configuration.
+2. After confirming no established VPN backend connections, ran from `/root/repo/xpn`:
+   ```sh
+   python3 deploy/install-server.py --url https://alta.jeffhansen.com/xpn --host-tcp-ports 85,443,5201
+   ```
+   Successful report: `/var/backups/xpn/20261026T221520052743Z/changes.md`; output: `build/iperf-port-install.log`.
+3. `xpn-native.service`: stopped; CMake/Ninja checked the existing native artifacts (no compilation needed), and all five native CTests passed. `xpn-network.service`: stopped. `/etc/systemd/system/xpn-network.service`: updated `XPN_HOST_TCP_PORTS` to `85,443,5201`. Reloaded systemd unit definitions and started network/native services. The control service remained running.
+4. `xpn0` and the dedicated `inet xpn` table: recreated by network service startup with the existing address/MTU/NAT and sysctl settings. The input rule now permits authenticated VPN traffic to host TCP **85,443,5201**, plus the existing ping allowance. `/etc/xpn/install.json`: updated successful-install/build fingerprints. No nginx configuration/reload, package/account change, certificate change, credential rotation or database change occurred.
+5. From the connected Mac (`10.77.0.3`, route through `utun10`), `iperf3 -c 10.77.0.1 -t 3 --connect-timeout 3000` completed: 11.3 Mbps received, 12.9 Mbps sent, 1,158 sender retransmissions. This verifies TCP connectivity, not the throughput target. Two established VPN backend streams were observed.
+6. At **23:02:20 UTC**, reran the installer without specifying host ports. It retained **85,443,5201** and reported **no installation changes**, with no build/restart/reload. Report: `/var/backups/xpn/20261026T230220295091Z/changes.md`; output: `build/iperf-port-noop.log`. Updated this record and the validation document in the checkout.
+
+To remove the added access, rerun the installer with `--host-tcp-ports 85,443` while clients are disconnected; this restarts network/native services. The successful report retains the prior configuration. No rollback was performed after the successful installation.
+
 ## Initial steps performed — October 25 (historical layout)
 
 1. **Inspected the host over existing root SSH access.** Checked OS, tools, free disk, listeners, nginx configuration/certificate metadata and the existing checkout. No SSH configuration, authorized keys or certificate files were edited. An initial `git fetch origin` in `/root/repo/xpn` failed with GitHub `Permission denied (publickey)`; the chained merge/install did not execute. No checkout changes were applied by that attempt.

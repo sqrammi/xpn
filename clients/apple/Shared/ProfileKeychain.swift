@@ -3,6 +3,7 @@ import Security
 
 struct ProfileKeychain {
     var accessGroup: String
+    var account = "device"
     var read: ([String: Any]) -> (OSStatus, Data?) = { query in
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -15,7 +16,7 @@ struct ProfileKeychain {
 
     var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "XPN.profile", kSecAttrAccount as String: "device",
+         kSecAttrService as String: "XPN.profile", kSecAttrAccount as String: account,
          kSecAttrAccessGroup as String: accessGroup,
          kSecUseDataProtectionKeychain as String: true]
     }
@@ -39,7 +40,7 @@ struct ProfileKeychain {
             return data
         }
         #if os(macOS)
-        if status == errSecItemNotFound && allowLegacyMigration {
+        if status == errSecItemNotFound && allowLegacyMigration && account == "device" {
             // Only the containing app migrates. The extension never falls back
             // to legacy ACL prompts. Preserve the old item as a recovery copy.
             values[kSecUseDataProtectionKeychain as String] = false

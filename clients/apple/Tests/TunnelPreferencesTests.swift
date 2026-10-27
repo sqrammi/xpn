@@ -8,7 +8,7 @@ import NetworkExtension
         result.serverAddress = "192.0.2.1"
         result.includeAllNetworks = true
         result.excludeLocalNetworks = true
-        result.providerConfiguration = ["resolvedServerAddress": "192.0.2.1",
+        result.providerConfiguration = ["connectionID": "server-one", "resolvedServerAddress": "192.0.2.1",
             "fullTunnel": true, "routes": ["10.20.0.0/16"],
             "innerEncryption": true, "requirePQ": false]
         return result
@@ -30,6 +30,7 @@ import NetworkExtension
             { $0.excludeLocalNetworks = false },
             { $0.providerConfiguration?["resolvedServerAddress"] = "192.0.2.2" },
             { $0.providerConfiguration?["fullTunnel"] = false },
+            { $0.providerConfiguration?["connectionID"] = "server-two" },
             { $0.providerConfiguration?["routes"] = ["10.30.0.0/16"] },
             { $0.providerConfiguration?["innerEncryption"] = false },
             { $0.providerConfiguration?["requirePQ"] = true }

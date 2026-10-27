@@ -67,6 +67,15 @@ import Security
         let failed = Store(); failed.writeError = errSecMissingEntitlement
         rejects(errSecMissingEntitlement) { _ = try failed.client().load(allowLegacyMigration: true) }
         precondition(failed.modern == nil)
+        var collectionReads = 0
+        let collection = ProfileKeychain(accessGroup: "TEAM.xpn.shared", account: "connections", read: { query in
+            collectionReads += 1
+            precondition(query[kSecAttrAccount as String] as? String == "connections")
+            precondition(query[kSecUseDataProtectionKeychain as String] as? Bool == true)
+            return (errSecItemNotFound, nil)
+        })
+        rejects(errSecItemNotFound) { _ = try collection.load(allowLegacyMigration: true) }
+        precondition(collectionReads == 1) // Only the old device item may use legacy migration.
         print("Keychain migration tests passed: app-only migration, shared protected storage, reconnects without legacy access, failure and cancellation handling.")
     }
 }

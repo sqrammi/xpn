@@ -2,6 +2,40 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
+## October 26: iOS distribution candidate
+
+Signed Release archive `1.0.0 (4)` succeeded, linking the existing native XCFramework without rebuilding C. Verified matching app/extension build numbers, display names, both privacy manifests and deep code signatures. Apple accepted the upload and processed it to Ready to Test after the encryption questionnaire (standard algorithms beyond Apple OS; no France distribution for this beta, confirmed by the publisher). The archive includes the generated lock/X icon and first-use privacy disclosure linking to the specified Alta policy. Simulator UI testing was unavailable because this Mac has no installed simulator devices/runtimes; this release's first-use disclosure still needs a device smoke test.
+
+Release-helper Python syntax checks passed. See [distribution instructions and operational record](APPLE-DISTRIBUTION.md) for archive/upload commands and App Store Connect changes. This does not resolve the LAN/throughput findings below or constitute public App Store approval.
+
+## October 26: iOS blank launch and first-connection diagnostics
+
+The user installed the iOS build, successfully enrolled by QR, and reported about ten seconds of black launch UI. The first VPN attempt transitioned from Connecting to Disconnected; a subsequent attempt after reopening worked. No original device trace or error was available, so the exact cause of that failed connection is unconfirmed.
+
+Inspection found synchronous Keychain access and curl initialization in the main-actor model initializer, before SwiftUI could render. Initialization now only attaches a status observer. The view starts asynchronous profile loading with a visible progress indicator, using a serial background queue for Keychain work. Native networking initializes lazily once per process on a worker. The extension also prepares the native client on its service queue and checks cancellation before starting the transport. Its native failure message is preserved. The app obtains the system's last-disconnect error, retains it in a separate error label, ignores notifications from other VPN entries and prevents duplicate Connect attempts during transition. Startup timings and error domain/code are logged without profiles, invitations or keys.
+
+The background-work regression passed (UI executor remains responsive during blocked work, writes/read ordering, thrown errors and recovery), along with saved-connection and Keychain migration tests. Signed physical-device iOS and macOS Debug builds passed against the existing XCFramework; deep signature verification passed. No C project was built. The framework now includes iOS device/simulator slices built separately before this investigation.
+
+Installed the update over the existing `com.jeffhansen.xpn.ios` app on the paired iPhone without uninstalling or clearing its data, then successfully launched it with `devicectl`. The 25-second console attachment timed out while waiting for the app to terminate; it did not supply startup timing output. The user subsequently confirmed that the app opens quickly and that Connect succeeded on the first attempt with the update. This is a successful device retest; exact launch latency was not measured, and the original first-attempt failure remains unattributed. Logs: `build/apple-ios-startup-build.log`, `build/apple-ios-startup-install.log`, `build/apple-ios-startup-launch.log`, and `build/apple-startup-macos-build.log`. Alta was inspected read-only; no server deployment/configuration changes were made.
+
+## October 26: saved Apple client connections
+
+Added a Keychain-backed saved connection collection and shared Mac/iOS server picker, names and removal. The extension loads the exact connection ID bound to its system VPN entry; it never substitutes the UI selection. Switching waits for existing XPN tunnels to disconnect before DNS resolution and startup. Each server/device retains its encryption and split-route preferences, with unchanged system entries reused.
+
+Swift tests passed for distinct endpoints sharing a device ID, key rotation without losing preferences or affecting another entry, collection serialization/selection/removal, isolated Keychain accounts and app-only legacy migration. VPN preference tests also verify that changing the connection ID requires a configuration update. Added the collection test to Apple CI; that workflow has not been run remotely.
+
+The signed macOS Debug app built against the existing native framework, and `codesign --verify --deep --strict` passed. No C project was rebuilt or server changed. Log: `build/apple-saved-connections-build.log`. Reopened the app and verified that the existing Alta profile appeared in the Server menu automatically, with its previous encryption selections preserved and rename/remove controls visible. No credentials were printed or exported. A live switch between two different servers has not been exercised; only Alta is enrolled here. Shared iOS source is updated, but no iOS build/device test was performed.
+
+## October 26: installer restart-port regression and live iperf
+
+Reproduced Linux `EADDRINUSE` from the installer's bare bind probe after accepted connections close. The updated probe uses `SO_REUSEADDR` and a real listen check: recently closed connections no longer block installation, while a competing live listener still fails. Twenty-seven installer/network tests passed on Alta; locally, 26 passed and the Linux socket test was skipped. Coverage includes a host-port-only update restarting network/native services while preserving control and credentials. Five native CTests passed during the live install; no local C build was performed.
+
+Installation on Alta succeeded with host TCP ports `85,443,5201`. Live nftables and systemd configuration agree; repeating the installer without the port argument retained that selection and made no changes. See [host changes](ALTA-HOST-CHANGES.md) for exact actions and reports.
+
+The connected Mac reached `10.77.0.1:5201` through `utun10`: `iperf3 -c 10.77.0.1 -t 3 --connect-timeout 3000` completed with 11.3 Mbps received, 12.9 Mbps sent and 1,158 sender retransmissions. Both VPN streams were established. This resolves the TCP connection failure; the high retransmissions and throughput remain unresolved and do not meet the 200 Mbps target.
+
+During that connected session, a subsequent LAN check to `172.9.0.2` returned 0/3 ping replies. The always-enabled Apple LAN policy below has therefore **not yet demonstrated working LAN access** in this setup; further diagnosis is required.
+
 ## October 26: Mac LAN access during full tunnel
 
 Read-only route inspection while XPN was disconnected confirmed `172.9.0.0/16` directly attached to `en0`, with default gateway `172.9.0.1`. Code inspection found full mode set `includeAllNetworks = true` without setting `excludeLocalNetworks`; the macOS SDK documents the latter default as false (iOS defaults true). This explains why the policy can capture LAN traffic despite ordinary connected routes; the exact earlier successful/failed sessions were not reproduced.

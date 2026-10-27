@@ -20,6 +20,10 @@ jobs:
           /tmp/xpn-preferences-tests
           swiftc clients/apple/Shared/ProfileKeychain.swift clients/apple/Tests/ProfileKeychainTests.swift -o /tmp/xpn-keychain-tests
           /tmp/xpn-keychain-tests
+          swiftc clients/apple/Shared/SavedConnections.swift clients/apple/Tests/SavedConnectionsTests.swift -o /tmp/xpn-connections-tests
+          /tmp/xpn-connections-tests
+          swiftc clients/apple/Shared/BlockingWork.swift clients/apple/Tests/BlockingWorkTests.swift -o /tmp/xpn-background-tests
+          /tmp/xpn-background-tests
       - name: Build pinned native dependency SDKs
         run: sh native/tools/apple-dependencies.sh
         env:

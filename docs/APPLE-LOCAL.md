@@ -23,7 +23,7 @@ The repo has two app schemes, `XPN-macOS` and `XPN-iOS`. Each embeds a packet tu
    cd /Users/ninkid/repo/xpn
    ```
 
-The current `XPNNative.xcframework` in this checkout contains self-contained static libraries for both macOS architectures, rebuilt on 2026-10-26 with paired connections and the packet-framing correction. It does not yet contain iOS slices. Native tests, the universal unsigned Release build, and the signed ARM Debug app/extension build passed. The signed client launched successfully. The older Homebrew-linked framework was backed up by the packaging script.
+The current `XPNNative.xcframework` in this checkout contains self-contained static libraries for both macOS architectures, iOS arm64 devices and arm64 simulators. The iOS slices were added before the October 26 device startup investigation. Signed Mac and physical-device iOS Debug builds now pass against it. The older framework was backed up by the packaging script. A fresh checkout still needs the dependency/framework steps below.
 
 ## 2. Build the native dependencies and framework
 
@@ -115,6 +115,24 @@ Previously, full mode set `includeAllNetworks` but never enabled the local-netwo
 
 See [Apple's routing guidance](https://developer.apple.com/documentation/networkextension/routing-your-vpn-network-traffic).
 
+### Saved servers and switching connections
+
+The Mac/iOS app retains multiple enrolled connections. Your existing single profile is automatically copied into the saved collection; older login-Keychain profiles migrate when you first Connect or add another profile. The original item remains as a recovery copy. Keys and complete profiles stay in the shared Data Protection Keychain.
+
+1. Use **Add connection**, **Import JSON**, or **Scan QR** for each server. Each server must issue this device its own invitation/profile. Adding one preserves existing entries.
+2. Choose a saved connection in the **Server** menu. Edit its name and click **Rename** if desired. The hostname is the initial name; the menu also displays the endpoint.
+3. Set that connection's encryption and split-tunnel choices. These persist separately for each saved connection.
+4. Click **Connect**. If an XPN tunnel is active, the app stops it and waits for disconnection before resolving and connecting to the selected server. Selecting a menu item alone does not switch the tunnel. There is one active tunnel at a time.
+5. **Remove…** removes an inactive connection from the collection and its system VPN entry. It does not revoke the server-side account. Disconnect an active entry before removing it.
+
+Importing the same device ID and endpoint again updates its profile, retaining its name and preferences (for example, after rotating its key). Different endpoints retain separate entries even if their device IDs match. Each connection has its own system VPN entry; unchanged reconnects reuse it. The first connection to a newly added server may require the operating system's normal VPN authorization.
+
+### Slow launch or a failed first connection
+
+The updated client renders its screen before loading saved profiles, showing **Loading saved connections…** while Keychain work runs off the UI thread. Native networking initializes when needed, off the UI thread. Rebuild and run the app scheme to install this Swift update; an existing complete native framework can be reused.
+
+If a connection returns to Disconnected, check the separate red error text in XPN. It includes the system error domain/code and remains visible until another attempt or a successful connection. You can retry without quitting the app. For diagnostics, use the device in macOS Console or Xcode and filter subsystem `com.jeffhansen.xpn`: categories `AppStartup`, `NativeStartup`, and `Connection` record initialization stages and elapsed times. Do not share enrollment JSON, QR secrets or Keychain contents. On the updated iPhone, the user confirmed a fast launch and successful first-attempt connection. Exact latency was not measured.
+
 ### Repeated password prompts
 
 The October 26 Keychain fix changes profile storage to the Data Protection Keychain with the app/extension's shared access group. Earlier builds used the legacy login Keychain; its access list trusted only the main app, so every new tunnel process asked permission to read `XPN.profile`. System logs confirmed this on the affected Mac.
@@ -157,3 +175,7 @@ xcodebuild -project clients/apple/XPN.xcodeproj -scheme XPN-iOS \
 If you want Xcode to contact your team for provisioning updates, add `-allowProvisioningUpdates` after configuring the account. Keep `CODE_SIGNING_ALLOWED=NO` only for compile/link checks; it is not a working VPN installation. For a first physical-device launch, return to ⌘R in Xcode. Archives/export/TestFlight/Developer ID release work come after local functional tests.
 
 If the selected development Mac is not registered with the company team, add `-allowProvisioningDeviceRegistration` alongside `-allowProvisioningUpdates` to register it and include it in the development profile. The signing key may require local Keychain authorization even after provisioning succeeds.
+
+## TestFlight distribution
+
+For the icon, signed archives, App Store Connect setup and installation without Developer Mode, see [APPLE-DISTRIBUTION.md](APPLE-DISTRIBUTION.md).
