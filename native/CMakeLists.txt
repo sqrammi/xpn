@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(xpn VERSION 0.1.0 LANGUAGES C)
+project(xpn VERSION 0.1.1 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(OpenSSL 3.0 REQUIRED)

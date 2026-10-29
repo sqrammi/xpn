@@ -37,7 +37,7 @@ def main():
     source = out / f'xpn-{version}'
     source.mkdir()
     # Explicit source roots: exclude private state, git metadata and Apple SDKs.
-    for folder in ['server/public', 'native/src', 'native/include', 'native/tests', 'clients/linux', 'deploy']:
+    for folder in ['server/public', 'native/src', 'native/include', 'native/tests', 'clients/linux', 'deploy', 'packaging']:
         shutil.copytree(root / folder, source / folder, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     (source / 'docs').mkdir()
     for name in ['PROTOCOL.md', 'PINNING.md', 'PRIVILEGE-SEPARATION.md', 'UBUNTU-PPA.md', 'LINUX-CLIENT-SERVICE.md']:
@@ -100,7 +100,7 @@ def main():
     package_version = f'{version}-0ubuntu1~{args.series}{args.revision}'
     (source / 'debian/changelog').write_text(
         f'xpn ({package_version}) {args.series}; urgency=medium\n\n'
-        '  * Release client/server packages with automated setup and migration.\n\n'
+        '  * Ship client-owned reconnect backoff and idempotent client service setup.\n\n'
         f' -- {maintainer}  {format_datetime(datetime.fromtimestamp(epoch, timezone.utc))}\n')
     for path in ['rules', 'xpn-server.postinst', 'xpn-server.prerm']:
         (source / 'debian' / path).chmod(0o755)

@@ -76,6 +76,9 @@ removal stops XPN. Do not purge data. Package upgrades stop XPN; rerun
 ```sh
 xpn enroll ./device.json
 sudo xpn connect ./device.json
+
+# With xpn-client 0.1.1 or newer, enable automatic connection at boot:
+sudo xpn-client-setup ./device.json --name alta
 ```
 
 Enrollment prompts for an invitation; see `xpn --help` for camera enrollment and
@@ -87,8 +90,8 @@ IPv6 policy are described in PROTOCOL.md.
 For automatic startup and the updated client's built-in retries, see
 [Linux client service setup](LINUX-CLIENT-SERVICE.md). The initial PPA release
 requires the updated launcher from this checkout; the guide gives a manual
-installation procedure using the existing native binary. A subsequent package
-release will include both the updated launcher and setup command.
+installation procedure using the existing native binary. Version 0.1.1
+includes both the updated launcher and setup command.
 
 ## Release workflow
 

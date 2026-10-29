@@ -6,8 +6,8 @@ systemd service that runs that command directly; it does not supervise attempts
 or implement another retry loop. Certificate pins and encryption policy remain
 the same on every attempt.
 
-This requires the updated Linux launcher in this checkout. The currently
-published PPA packages do not include these changes yet. No native C rebuild is
+This requires `xpn-client` 0.1.1 or newer, or the updated Linux launcher in this
+checkout. The initial 0.1.0 PPA packages do not include these changes. No native C rebuild is
 required to use the updated launcher with the existing PPA native executable.
 
 For an interactive connection with the updated launcher:
@@ -25,7 +25,13 @@ Use an already enrolled JSON profile. Downloading the profile in the browser
 redeems its invitation; use that JSON directly. Stop any foreground connection
 using that identity before starting the service.
 
-Until the next PPA release, install the updated launcher separately from the
+With `xpn-client` 0.1.1 or newer, setup is one command:
+
+```sh
+sudo xpn-client-setup ./xpn-profile.json --name alta
+```
+
+If still using the initial 0.1.0 package, install the updated launcher separately from the
 package-owned `/usr/bin/xpn`, then run setup from the checkout:
 
 ```sh
@@ -48,7 +54,7 @@ The source launcher uses `/usr/local/bin/xpnd` by default; when running it
 interactively with the existing PPA, pass `--native /usr/lib/xpn/client/xpnd`.
 The generated service already specifies that native path.
 
-Packaging now includes the equivalent entry point for the **next release**:
+The 0.1.1 package includes the entry point:
 
 ```sh
 sudo xpn-client-setup ./xpn-profile.json --name alta
@@ -56,7 +62,7 @@ sudo xpn-client-setup ./xpn-profile.json --name alta
 
 The already published `0.1.0-0ubuntu1~noble1` / `~resolute1` packages do not
 contain the helper or built-in launcher retries. Use the two-file procedure
-above until an updated package is published. After upgrading to a package that
+above if an updated package is not yet available in your APT indexes. After upgrading to a package that
 includes retries, remove only the manually installed `/usr/local/bin/xpn` and
 rerun `xpn-client-setup` to select the package-owned `/usr/bin/xpn`.
 
