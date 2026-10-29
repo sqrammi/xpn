@@ -1,0 +1,53 @@
+.TH XPN-CLIENT-SETUP 8 "October 2026" "XPN"
+.SH NAME
+xpn-client-setup \- install an XPN client service with automatic retries
+.SH SYNOPSIS
+.B sudo xpn-client-setup
+.I profile.json
+.RB [ --name " alta" ]
+.RB [ --no-start ]
+.RB [ --inner-encryption " on|off" ]
+.RB [ --require-pq ]
+.RB [ --single-stream ]
+.SH DESCRIPTION
+Copies an already enrolled profile into /etc/xpn/clients with mode 0600,
+creates and enables a named systemd unit, and starts it unless --no-start is used.
+Unchanged reruns do not restart an active service. Requires an updated XPN client
+with built-in retry support. No C compilation or account creation is performed.
+.PP
+The unit runs xpn connect directly. The client retries network failures
+indefinitely with equal jitter: 5-10, 10-20, 20-40,
+40-80, 80-160, then 150-300 seconds. Backoff resets after a connection lasts
+120 seconds. Startup is spread over 0-5 seconds. Manual stop cancels retries.
+Certificate checks, authentication and encryption policy are never relaxed.
+.SH OPTIONS
+.TP
+.B --name NAME
+Service suffix, default default. Produces xpn-client-NAME.service.
+.TP
+.B --no-start
+Enable at boot without starting now. Changed active configurations are stopped.
+.TP
+.B --retry-initial SECONDS
+Initial retry ceiling; default 10. Delay is half to all of the ceiling.
+.TP
+.B --retry-max SECONDS
+Maximum retry ceiling; default 300, allowed up to 3600.
+.TP
+.B --stable-seconds SECONDS
+Authenticated uptime required to reset backoff; default 120.
+.SH NETWORKING
+The launcher restores ordinary networking between attempts and when stopped.
+This is not an always-on kill switch. Full-tunnel connections may interrupt SSH.
+Use a split-tunnel profile for initial remote testing. Separate services require
+separate device profiles; multiple full tunnels can conflict.
+.SH FILES
+.I /etc/xpn/clients/NAME.json
+.br
+.I /etc/systemd/system/xpn-client-NAME.service
+.br
+.I /var/backups/xpn-client/TIMESTAMP/changes.md
+.SH SEE ALSO
+.BR xpn (1),
+.BR systemctl (1),
+.BR journalctl (1)

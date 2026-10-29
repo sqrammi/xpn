@@ -1,0 +1,60 @@
+.TH XPN 1 "October 2026" "XPN 0.1.0"
+.SH NAME
+xpn \- enroll and connect to an XPN TLS/WebSocket VPN
+.SH SYNOPSIS
+.B xpn enroll
+.I profile.json
+.RB [ --scan ]
+.br
+.B sudo xpn connect
+.I profile.json
+.RB [ --inner-encryption " on|off" ]
+.RB [ --require-pq ]
+.RB [ --single-stream ]
+.SH DESCRIPTION
+Enroll using a one-use invitation entered at the prompt or scanned with a camera.
+The profile is private device credentials; do not share it with another client.
+Connect requires root to configure TUN, routes and the firewall.
+Full or split routing is taken from the server-authorized profile.
+The client itself retries connection failures indefinitely with randomized
+exponential backoff, both interactively and under systemd. Delays are 5-10,
+10-20, 20-40, 40-80, 80-160, then 150-300 seconds, in addition to attempt time.
+Two minutes connected resets the backoff. Initial startup is delayed 0-5 seconds.
+Ctrl-C or SIGTERM stops retries and restores network state. Ordinary networking
+resumes between attempts; this is not a persistent kill switch.
+.SH OPTIONS
+.TP
+.B --no-retry
+Make a single connection attempt, exiting on failure or disconnect.
+.TP
+.B --retry-initial SECONDS
+Initial retry ceiling; default 10. Wait half to all of the ceiling.
+.TP
+.B --retry-max SECONDS
+Maximum retry ceiling; default 300. Allowed up to 3600.
+.TP
+.B --stable-seconds SECONDS
+Connected uptime required to reset backoff; default 120.
+.TP
+.B --scan
+Read the enrollment QR code with zbarcam (zbar-tools).
+.TP
+.B --inner-encryption on|off
+Enable or disable the additional ChaCha20-Poly1305 layer. Outer TLS remains on.
+.TP
+.B --require-pq
+Require hybrid ML-KEM key exchange; fail if unsupported.
+.TP
+.B --single-stream
+Disable the default authenticated standby lane for older servers.
+.TP
+.B --native PATH
+Select the native executable. Normally use the packaged executable.
+.TP
+.B --invitation URL
+Supply the invitation as an argument. Prefer the prompt to avoid shell history.
+.SH FILES
+.I /usr/lib/xpn/client/xpnd
+.SH SEE ALSO
+.BR xpn-client-setup (8),
+.BR xpn-server-setup (8)

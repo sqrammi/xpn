@@ -1,0 +1,47 @@
+.TH XPN-SERVER-SETUP 8 "October 2026" "XPN 0.1.0"
+.SH NAME
+xpn-server-setup \- configure or migrate the packaged XPN server
+.SH SYNOPSIS
+.B xpn-server-setup --url
+.I https://host/xpn
+.RB [ --migrate-checkout ]
+.RB [ --plan ]
+.RB [ --host-tcp-ports " 22,443" ]
+.SH DESCRIPTION
+Configure XPN in an existing nginx HTTPS site. Generate credentials only on
+first installation; preserve existing device accounts, keys and settings.
+Start the non-root control and packet services and configure TUN/NAT.
+Reruns update only changed resources. Root access is required for installation.
+.SH OPTIONS
+.TP
+.B --plan
+Read-only preview; do not change files or start services.
+.TP
+.B --migrate-checkout
+Explicitly migrate a checkout managed by the XPN installer to the package units.
+Back up and remove managed local unit overrides; preserve database and settings.
+.TP
+.B --nginx-site PATH
+Select an existing nginx HTTPS site when auto-detection is ambiguous.
+.TP
+.B --certificate PATH
+Select its PEM certificate when it is in a separate included file.
+.TP
+.B --control-port PORT, --native-port PORT
+Select unprivileged loopback backend ports for a new installation.
+.TP
+.B --host-tcp-ports LIST
+Comma-separated server TCP ports accessible inside the VPN. Reruns preserve it.
+.TP
+.B --show-admin-token
+Print the administrator token locally. Do not capture in shared logs.
+.SH FILES
+.I /etc/xpn.env
+.br
+.I /etc/xpn/install.json
+.br
+.I /var/lib/xpn
+.br
+.I /var/backups/xpn
+.SH SEE ALSO
+.BR xpn (1)

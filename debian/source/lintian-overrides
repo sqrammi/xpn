@@ -1,0 +1,11 @@
+# Hand-written, readable source files; long HTML/template lines are not minified.
+xpn source: source-is-missing [server/public/app.js]
+xpn source: source-is-missing [server/public/index.html]
+xpn source: source-is-missing [server/public/join.html]
+# Generated Unicode regexes: pinned upstream src/ and script/ in vendor/sources.
+xpn source: source-is-missing [vendor/node_modules/emoji-regex/index.js]
+xpn source: source-is-missing [vendor/node_modules/emoji-regex/text.js]
+# TypeScript preferred source and tsconfigs: vendor/sources/nodemailer-10.2.1/.
+xpn source: source-is-missing [vendor/node_modules/nodemailer/dist/cjs/errors.js]
+# This is the unminified original algorithm source, with explanatory comments.
+xpn source: source-is-missing [vendor/node_modules/pngjs/lib/filter-pack.js]

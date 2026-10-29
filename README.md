@@ -25,7 +25,7 @@ The nginx WebSocket transport requires native userspace processing; this impleme
 - [macOS and iOS: Xcode setup, native framework, signing and first run](docs/APPLE-LOCAL.md)
 - [Ubuntu Noble/Resolute: separate client/server packages, local deployment and testing, then PPA preparation](docs/LOCAL-TESTING.md)
 
-The Debian recipe is a local packaging draft. It has not yet been built or installed on Ubuntu. Server installation requires Node 24.13.1+; publication also needs finalized licensing and dependency review.
+Ubuntu amd64 client/server packages have been built and tested on Noble and Resolute. See [PPA installation and migration](docs/UBUNTU-PPA.md) and the [release record](docs/PPA-RELEASE-2026-10-27.md). The server requires Node 24.13.1+; XPN is MIT licensed, with dependency notices included.
 
 ## Run the Node checks
 
@@ -80,7 +80,7 @@ sudo python3 clients/linux/xpn.py connect ./my-device.json
 
 Pasting an invitation without camera support is available by omitting `--scan`. A JSON profile downloaded from `/join` can be used directly; protect its file permissions with `chmod 600`. The C `xpnd enroll` command also exists, but passing secret invitations as shell arguments can expose them in history/process listings.
 
-The launcher installs only its own interface/routes/firewall table and restores them on a normal exit or handled signal. Full mode uses IPv4 default halves, DNS through `systemd-resolved`, and an output firewall that permits the tunnel, loopback and the HTTPS endpoint. It blocks IPv6. Split mode keeps other traffic and DNS local; configure the allowed subnets when creating the device in the console. An abrupt kill or machine crash can leave temporary client routes/firewall state; inspect/remove the process-specific `xpn<PID>` interface and `inet xpn_<PID>` nftables table during recovery. IPv6 endpoints and automatic reconnect/roaming are not supported by this launcher.
+The launcher installs only its own interface/routes/firewall table and restores them on a normal exit or handled signal. Full mode uses IPv4 default halves, DNS through `systemd-resolved`, and an output firewall that permits the tunnel, loopback and the HTTPS endpoint. It blocks IPv6. Split mode keeps other traffic and DNS local; configure the allowed subnets when creating the device in the console. An abrupt kill or machine crash can leave temporary client routes/firewall state; inspect/remove the process-specific `xpn<PID>` interface and `inet xpn_<PID>` nftables table during recovery. `xpn connect` retries failures indefinitely with randomized exponential backoff; `--no-retry` makes one attempt. For boot startup and installation with the current PPA, use the [Linux client service setup](docs/LINUX-CLIENT-SERVICE.md). IPv6 endpoints and roaming are not supported by this launcher.
 
 ## Apple clients
 
@@ -100,4 +100,4 @@ iperf3 -c 10.20.1.10 -P 4 -t 30 -R
 
 The local native/WSS/nginx loopback test measured approximately **877 Mbps per direction** in PSK mode and **891 Mbps per direction** in hybrid mode during simultaneous synthetic packet round trips. These measurements exclude TUN, kernel routing, WAN conditions and physical devices; they are not an AWS capacity result.
 
-Measure single-stream and parallel throughput, simultaneous clients, CPU for nginx and xpnd, latency/loss and mobile battery use. Repeat on a lossy path to measure TCP-over-TCP behavior. Target acceptance is at least 200 Mbps in both directions on your chosen EC2 instance and supported clients, with measured headroom; AWS/device acceptance has **not** been established. Multi-core sharding, automatic reconnect, production administration SSO, native dependency supply-chain review and an independent protocol/implementation security audit remain future work.
+Measure single-stream and parallel throughput, simultaneous clients, CPU for nginx and xpnd, latency/loss and mobile battery use. Repeat on a lossy path to measure TCP-over-TCP behavior. Target acceptance is at least 200 Mbps in both directions on your chosen EC2 instance and supported clients, with measured headroom; AWS/device acceptance has **not** been established. Multi-core sharding, mobile automatic reconnect, production administration SSO, native dependency supply-chain review and an independent protocol/implementation security audit remain future work.

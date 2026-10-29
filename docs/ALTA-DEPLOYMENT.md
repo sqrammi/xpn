@@ -1,5 +1,7 @@
 # Install the server on Alta
 
+For package installation and checkout migration, use [the Ubuntu PPA guide](UBUNTU-PPA.md). This document describes the source-checkout installer.
+
 Run this from the existing checkout on Alta:
 
 ```sh

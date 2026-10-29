@@ -2,6 +2,72 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
+## October 29 follow-up: retries belong to the Linux client
+
+The implementation below was revised after the user's clarification: retry
+ownership now lives in `clients/linux/xpn.py`, the Linux `xpn connect` command.
+The service helper generates a unit that executes that client directly and has
+no runtime supervisor. It rejects installed launchers that do not support retries.
+Interactive and service connections use the same indefinite jittered backoff;
+`--no-retry` allows a single attempt. Native C packet processing is unchanged.
+
+Eighteen focused client/setup tests passed, covering backoff cap/stable reset,
+retries after DNS/native failure (including exit zero), terminal native messages,
+partial-line authentication timeout, cleanup ordering, fatal cleanup failure,
+SIGTERM during connection/cleanup, no-retry, malformed configuration and service
+setup/rollback/compatibility. The combined packaging suite ran 48 tests: 47 passed
+and one Linux-only test was skipped. Tests use real harmless child processes with
+mocked network commands; no C build or local VPN route change occurred.
+
+The real-TUN CI test now invokes the client directly without a supervisor. This
+revision has **not** been exercised against real TUN/systemd: SSH to Alta timed
+out before any remote change. Earlier remote passes below cover the prior helper
+implementation, not this refactor. No installed client, production service or PPA
+was updated. Local test output: `build/client-service-tests/client-retry-python-tests.log`.
+Updated installation instructions are in [the Linux guide](LINUX-CLIENT-SERVICE.md).
+
+## October 29: boot-started Linux client and retry supervisor
+
+Eleven client-service regressions passed: jitter growth/cap/reset, setup/no-op
+reruns, private profile permissions, update backup and rollback, no-start,
+unmanaged/symlink refusal, systemd quoting/restrictions, retry after exit zero,
+terminal native-message handling and cancellation of a live child. The combined
+packaging suite ran 41 tests: 40 passed and the Linux-only socket test was skipped
+on macOS. No C project was built.
+
+On Alta, used the existing native executable with temporary source/fixture files
+in a private mount/network namespace. Split/full real-TUN transfers, NAT,
+host-port isolation, custom SNI/pinning and non-root server thread checks passed.
+The new supervisor test authenticated, recovered after a complete test-server
+outage, transferred another 1 MiB and stopped without leaving its TUN/firewall
+state. Testing exposed an older native event loop that can remain alive after
+printing its terminal reconnect message; the supervisor now terminates the
+launcher gracefully at that message before retrying.
+
+The generated unit passed `systemd-analyze verify` (unrelated existing host-unit
+warnings only). A transient unit with the same filesystem/capability restrictions
+and an additional private network namespace launched native code, retried a
+refused connection and stopped cleanly. Its first test directory under `/run`
+was unsuitable because Alta mounts it noexec; the successful test used a temporary
+directory under `/var/lib`. Both runtime directories were removed. Production XPN
+services were not restarted or reconfigured. Local Python test logs are in
+`build/client-service-tests/`; remote test logs remain in
+`/root/xpn-client-service-tests-20261029/`. Subsequent SSH connections timed out,
+so the final remote-log download and independent cleanup audit were unavailable;
+the test's exit trap completed and its journal recorded a successful stop.
+
+No real host reboot, full-tunnel DNS under the service sandbox, overnight retry
+soak, Noble runtime, or new PPA binary build/publication was performed. The helper
+is available as a standalone script compatible with the existing PPA launcher;
+the package entry point is prepared for a subsequent release. See
+[Linux service instructions](LINUX-CLIENT-SERVICE.md).
+
+## October 27: Ubuntu PPA packaging
+
+Noble amd64 packages built and installed on little-guy-root; Resolute amd64 packages built and installed on seven-root. Native CTest, Node tests, syntax checks and installed systemd unit validation passed on both. Namespace-isolated TUN tests passed full/split routing, NAT, host port filtering, custom SNI and certificate pinning with inner encryption enabled/disabled. Standby delay failover and wrong-pin rejection passed; Resolute hybrid ML-KEM transport passed. Final binary packages have no lintian findings. Source lintian's narrow false positives/generated-source paths are documented in the source overrides; upstream preferred sources are included.
+
+Thirty installer regressions pass locally, with the Linux socket test skipped on macOS. Coverage includes explicit checkout-to-package migration, unchanged credentials, boot-link retargeting and no-op reruns. All native builds ran on the designated Ubuntu hosts. Signing/publication and Alta migration evidence is in [the release record](PPA-RELEASE-2026-10-27.md).
+
 ## October 26: iOS distribution candidate
 
 Signed Release archive `1.0.0 (4)` succeeded, linking the existing native XCFramework without rebuilding C. Verified matching app/extension build numbers, display names, both privacy manifests and deep code signatures. Apple accepted the upload and processed it to Ready to Test after the encryption questionnaire (standard algorithms beyond Apple OS; no France distribution for this beta, confirmed by the publisher). The archive includes the generated lock/X icon and first-use privacy disclosure linking to the specified Alta policy. Simulator UI testing was unavailable because this Mac has no installed simulator devices/runtimes; this release's first-use disclosure still needs a device smoke test.

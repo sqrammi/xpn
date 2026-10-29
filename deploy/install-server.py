@@ -23,6 +23,8 @@ import urllib.request
 from urllib.parse import urlsplit
 
 SOURCE = Path(__file__).resolve().parents[1]
+PACKAGED = SOURCE == Path('/usr/share/xpn')
+PACKAGE_BINARY = Path('/usr/lib/xpn/server/xpnd')
 NODE_VERSION = '24.22.1'
 MARKER = '# Managed by XPN install-server.py'
 UNITS = ['xpn-network', 'xpn-control', 'xpn-native']
@@ -204,6 +206,19 @@ def unit_files(source, node, port, base, host_ports='22,443'):
             for name, body in zip(UNITS, [network, control, native])}
 
 
+def package_unit_files(port, base, host_ports):
+    return {
+        UNIT_DIR / 'xpn-native.service.d/xpn.conf': MARKER + '\n[Service]\nExecStart=\n'
+            f'ExecStart={PACKAGE_BINARY} server {port} /run/xpn/control.sock {base}/vpn xpn0 --loopback\n',
+        UNIT_DIR / 'xpn-network.service.d/xpn.conf': MARKER + '\n[Service]\n'
+            f'Environment=XPN_HOST_TCP_PORTS={host_tcp_ports(host_ports)}\n',
+    }
+
+
+def unit_name(path):
+    return path.parent.name.removesuffix('.service.d') if path.suffix == '.conf' else path.stem
+
+
 class Changes:
     """Back up touched configuration files and restore them if installation fails."""
     def __init__(self, backup):
@@ -272,6 +287,15 @@ class Changes:
         finally:
             if os.path.exists(temporary): os.unlink(temporary)
         self.changed(path, f'{"Added" if previous is None else "Updated"} {reason} (mode {mode:04o})')
+        return True
+
+    def remove(self, path, reason):
+        path = Path(path)
+        if not path.exists(): return False
+        # Use the same backup/manifest machinery as replacements, then remove.
+        self.write(path, '', path.stat().st_mode & 0o777, reason)
+        path.unlink()
+        self.changed(path, 'Removed ' + reason)
         return True
 
     def rollback(self, preserve=()):
@@ -407,6 +431,7 @@ def main():
     parser.add_argument('--native-port', type=int)
     parser.add_argument('--host-tcp-ports', type=host_tcp_ports, help='Host TCP services reachable through VPN; defaults to 22,443; ping is also allowed. Reruns preserve the selected list.')
     parser.add_argument('--plan', action='store_true', help='Read-only preview; does not install or start anything')
+    parser.add_argument('--migrate-checkout', action='store_true', help='Explicitly migrate an installer-managed checkout to the installed package; preserve credentials and endpoint')
     parser.add_argument('--skip-build', action='store_true', help='Use already built native executable and node_modules')
     parser.add_argument('--show-admin-token', action='store_true', help='Print the existing admin token locally (root only)')
     args = parser.parse_args()
@@ -452,10 +477,15 @@ def install(args):
     native_port = args.native_port or previous.get('native_port') or available_port(3301, reserved | {control_port})
     if not (1024 <= control_port <= 65535 and 1024 <= native_port <= 65535) or control_port == native_port:
         raise ValueError('Choose distinct unprivileged backend ports (1024–65535)')
-    if previous and (previous.get('source') != str(source) or previous.get('site') != str(site) or previous.get('native_port') != native_port):
+    migrating = PACKAGED and args.migrate_checkout and previous and previous.get('source') != str(source)
+    if args.migrate_checkout and not PACKAGED:
+        raise ValueError('--migrate-checkout requires the installed xpn-server-setup command')
+    if previous and ((previous.get('source') != str(source) and not migrating) or previous.get('site') != str(site) or previous.get('native_port') != native_port):
         raise ValueError('Existing installation uses a different source/site/native port; migrate explicitly instead of silently replacing it')
     for unit in UNITS:
-        if list((UNIT_DIR / f'{unit}.service.d').glob('*.conf')):
+        dropins = list((UNIT_DIR / f'{unit}.service.d').glob('*.conf'))
+        allowed = set(package_unit_files(native_port, base, host_ports)) if PACKAGED else set()
+        if any(p not in allowed or not p.read_text().startswith(MARKER) for p in dropins):
             raise ValueError(f'Existing {unit} drop-ins need reconciliation before using the installer')
     for path in [HTTP, LOCATIONS] + [UNIT_DIR / f'{u}.service' for u in UNITS]:
         template = source / 'deploy' / path.name
@@ -465,7 +495,9 @@ def install(args):
         if path.exists() and not path.read_text().startswith(MARKER) and not stock:
             raise ValueError(f'Existing unmanaged file needs reconciliation: {path}')
     env_text = environment(url, control_port, pin, old_env)
-    node = node_candidate(source)
+    node = Path('/usr/bin/node') if PACKAGED else node_candidate(source)
+    if PACKAGED and not node_ok(node):
+        raise ValueError('Install nodejs >= 24.13.1 from NodeSource 24 before configuring xpn-server')
     print(f'Checkout: {source}\nConsole: {url}/\nHTTPS site: {site}\nCertificate: {certificate}\n'
           f'Backend ports: {control_port} / {native_port}\nVPN-accessible host TCP ports: {host_ports}\nService account: xpn\n'
           f'Node: {node or "download private Node " + NODE_VERSION + " into build/tools"}')
@@ -477,7 +509,7 @@ def install(args):
                                         capture=True, check=False).stdout.strip() in ('active', 'activating', 'reloading')}
     enabled = {u for u in UNITS if command('systemctl', 'is-enabled', '--quiet', u, capture=True, check=False).returncode == 0}
     stopped, started, newly_enabled = set(), set(), set()
-    unit_changed, nginx_reloaded = False, False
+    unit_changed, nginx_reloaded, reenabled = False, False, False
 
     def stop(units, reason):
         # Requires= propagates control/network stops to native, so explicitly
@@ -495,7 +527,7 @@ def install(args):
         packages = package_versions()
         def installed(name): return name in packages or any(p.split(':')[0] == name for p in packages)
         missing = [p for p in PACKAGES if not installed(p)]
-        if missing and not args.skip_build:
+        if missing and not args.skip_build and not PACKAGED:
             changes.run('apt-get', 'update', '-qq')
             changes.changed('/var/lib/apt/lists', 'Refreshed package indexes for missing dependencies')
             try:
@@ -511,7 +543,7 @@ def install(args):
         if not node_ok(node): raise ValueError('Node 24.13.1+ is required')
         safe_path(node)
         env = {**os.environ, 'PATH': str(node.parent) + ':' + os.environ['PATH']}
-        binary = source / 'build/native/xpnd'
+        binary = PACKAGE_BINARY if PACKAGED else source / 'build/native/xpnd'
         modules = source / 'node_modules'
         old_build = previous.get('build', {})
         # A recorded successful build is reusable only with matching inputs AND
@@ -526,7 +558,7 @@ def install(args):
         npm_build = (old_build.get('npm') != inputs['npm']
                      or old_build.get('modules') != fingerprint(tree_files(modules))
                      or not (modules / 'qrcode/package.json').exists())
-        if not args.skip_build:
+        if not args.skip_build and not PACKAGED:
             if npm_build:
                 stop({'xpn-control'}, 'Node dependencies need installation')
                 changes.run('npm', 'ci', '--omit=dev', '--ignore-scripts', '--prefix', source, env=env)
@@ -555,11 +587,14 @@ def install(args):
                 destination = route.get('dst', 'default')
                 if destination != 'default' and pool.overlaps(ipaddress.ip_network(destination, strict=False)):
                     raise ValueError(f'VPN pool 10.77.0.0/24 overlaps existing route {destination}; choose another pool before installing')
-        units = unit_files(source, node, native_port, base, host_ports)
+        units = package_unit_files(native_port, base, host_ports) if PACKAGED else unit_files(source, node, native_port, base, host_ports)
+        obsolete = [UNIT_DIR / f'{u}.service' for u in UNITS if (UNIT_DIR / f'{u}.service').exists()] if PACKAGED else []
+        if obsolete and not migrating:
+            raise ValueError('Local service overrides require --migrate-checkout with a recorded checkout installation')
         applied = {
             'xpn-control': fingerprint(tree_files(source / 'server') + [node]) + hashlib.sha256(env_text.encode()).hexdigest() + fingerprint(tree_files(modules)),
             'xpn-native': fingerprint([binary]),
-            'xpn-network': fingerprint([source / 'deploy/network.sh']),
+            'xpn-network': fingerprint([Path('/usr/lib/xpn/network.sh') if PACKAGED else source / 'deploy/network.sh']),
         }
         needs_restart = {u for u in UNITS if previous.get('applied', {}).get(u) != applied[u]}
         # Detect deletion of resources even when the oneshot unit remains active.
@@ -569,7 +604,8 @@ def install(args):
                 or command('sysctl', '-n', 'net.ipv4.ip_forward', capture=True).stdout.strip() != '1'):
             needs_restart.add('xpn-network')
         for path, body in units.items():
-            if content_differs(path, body): needs_restart.add(path.stem)
+            if content_differs(path, body): needs_restart.add(unit_name(path))
+        if obsolete: needs_restart.update(UNITS)
         stop(needs_restart, 'configuration, runtime files or network resources changed')
         for unit, port in (('xpn-control', control_port), ('xpn-native', native_port)):
             if unit not in active or unit in stopped:
@@ -578,8 +614,10 @@ def install(args):
                 except OSError as error:
                     raise ValueError(f'{unit} cannot bind backend 127.0.0.1:{port}: {error}. Check existing listeners on this port.') from error
         changes.write(ENV, env_text, 0o600, 'admin/database credentials and server settings; existing values preserved')
+        for path in obsolete:
+            unit_changed |= changes.remove(path, 'managed checkout unit; use package vendor unit instead')
         for path, body in units.items():
-            reason = ('network setup service' if path.stem == 'xpn-network' else
+            reason = 'package service configuration' if PACKAGED else ('network setup service' if path.stem == 'xpn-network' else
                       'non-root service with read-only checkout mounted at /run/xpn-source')
             unit_changed |= content_differs(path, body)
             changes.write(path, body, reason=reason)
@@ -622,6 +660,10 @@ def install(args):
             changes.run('systemctl', 'reload', 'nginx')
             changes.changed('nginx.service', 'Reloaded changed proxy configuration')
         check_https(changes, host, url)
+        if migrating and enabled:
+            reenabled = True
+            changes.run('systemctl', 'reenable', *[u for u in UNITS if u in enabled])
+            changes.changed('/etc/systemd/system/multi-user.target.wants', 'Retargeted enabled XPN startup links to package vendor units')
         to_enable = [u for u in UNITS if u not in enabled]
         if to_enable:
             newly_enabled.update(to_enable)
@@ -645,6 +687,8 @@ def install(args):
             changes.changed(unit + '.service', 'Disabled startup during rollback')
         preserve = {ENV} if old_env is None and ENV in changes.before else set()
         changes.rollback(preserve=preserve)
+        if reenabled:
+            changes.run('systemctl', 'reenable', *[u for u in UNITS if u in enabled], check=False)
         if unit_changed: changes.run('systemctl', 'daemon-reload', check=False)
         if affected & active:
             changes.run('systemctl', 'start', *[u for u in UNITS if u in affected & active], check=False)

@@ -98,6 +98,24 @@ class InstallerTests(unittest.TestCase):
                         self.assertIn(('systemctl', 'enable', *installer.UNITS), calls)
                         secret = installer.read_environment(env.read_text())['ADMIN_TOKEN']
                         self.assertNotIn(secret, next((root / 'backups').glob('*/actions.log')).read_text())
+                        if repeat == 'migrate':
+                            running = True
+                            old_secret = env.read_bytes()
+                            installed = root / 'package'
+                            shutil.copytree(source, installed)
+                            calls.clear()
+                            argv.append('--migrate-checkout')
+                            with patch.object(installer, 'PACKAGED', True), patch.object(installer, 'SOURCE', installed), patch.object(installer, 'PACKAGE_BINARY', binary):
+                                installer.main()
+                                self.assertEqual(env.read_bytes(), old_secret)
+                                self.assertTrue(all(not (root / 'units' / (u + '.service')).exists() for u in installer.UNITS))
+                                self.assertTrue((root / 'units/xpn-native.service.d/xpn.conf').exists())
+                                self.assertIn(('systemctl', 'reenable', *installer.UNITS), calls)
+                                self.assertFalse(any(c[0] in ('cmake', 'npm', 'apt-get') for c in calls))
+                                calls.clear()
+                                installer.main()
+                                self.assertFalse(any(c[:2] in [('systemctl', a) for a in ('stop', 'start', 'reload', 'reenable', 'daemon-reload')] for c in calls))
+                            return
                         if repeat:
                             argv.remove('--host-tcp-ports'); argv.remove('85,443')
                             running = True
@@ -139,6 +157,8 @@ class InstallerTests(unittest.TestCase):
                                                              ('systemctl', 'start', 'xpn-network', 'xpn-native')])
                                 self.assertIn('Environment=XPN_HOST_TCP_PORTS=85,443,5201', (root / 'units/xpn-network.service').read_text())
                                 self.assertEqual(env.read_bytes(), before[env][0])
+
+    def test_migration_preserves_secrets_retargets_boot_links_and_reruns_cleanly(self): self.simulate_install(repeat='migrate')
 
     def test_complete_install_orchestration(self): self.simulate_install()
 
@@ -249,6 +269,28 @@ server {
         self.assertIn('/run/xpn-source/build/native/xpnd server 3301', native)
         self.assertIn('/vpn-team/vpn', native)
         self.assertIn('/run/xpn-source/build/tools/node/bin/node', control)
+
+    def test_packaged_units_use_vendor_binary_and_only_scoped_overrides(self):
+        units = installer.package_unit_files(3301, '/team', '5201,85,443')
+        self.assertEqual(len(units), 2)
+        native = units[installer.UNIT_DIR / 'xpn-native.service.d/xpn.conf']
+        self.assertIn('ExecStart=\nExecStart=/usr/lib/xpn/server/xpnd server 3301', native)
+        self.assertIn('/team/vpn xpn0 --loopback', native)
+        self.assertNotIn('BindReadOnlyPaths', native)
+        self.assertIn('XPN_HOST_TCP_PORTS=85,443,5201', units[installer.UNIT_DIR / 'xpn-network.service.d/xpn.conf'])
+        self.assertEqual({installer.unit_name(p) for p in units}, {'xpn-native', 'xpn-network'})
+
+    def test_checkout_unit_removal_is_recoverable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); unit = root / 'xpn-control.service'
+            original = b'original checkout unit\n'
+            unit.write_bytes(original); unit.chmod(0o640)
+            changes = installer.Changes(root / 'backup')
+            self.assertTrue(changes.remove(unit, 'checkout migration'))
+            self.assertFalse(unit.exists())
+            changes.rollback()
+            self.assertEqual(unit.read_bytes(), original)
+            self.assertEqual(unit.stat().st_mode & 0o777, 0o640)
 
     def test_rollback_restores_original_bytes_modes_and_keeps_new_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,12 +14,20 @@ override_dh_auto_install:
 	install -D -m755 build-native/xpnd debian/xpn-server/usr/lib/xpn/server/xpnd
 	install -D -m755 clients/linux/xpn.py debian/xpn-client/usr/bin/xpn
 	sed -i 's|/usr/local/bin/xpnd|/usr/lib/xpn/client/xpnd|g' debian/xpn-client/usr/bin/xpn
+	install -D -m755 clients/linux/client-service.py debian/xpn-client/usr/lib/xpn/client-service.py
+	install -d debian/xpn-client/usr/sbin
+	ln -s ../lib/xpn/client-service.py debian/xpn-client/usr/sbin/xpn-client-setup
 	install -d debian/xpn-server/usr/share/xpn/server debian/xpn-server/usr/lib/systemd/system
 	cp server/*.mjs debian/xpn-server/usr/share/xpn/server/
 	rm -f debian/xpn-server/usr/share/xpn/server/*.test.mjs debian/xpn-server/usr/share/xpn/server/native-integration.mjs debian/xpn-server/usr/share/xpn/server/tun-fixture.mjs
 	cp -a server/public debian/xpn-server/usr/share/xpn/server/
 	cp -a vendor/node_modules debian/xpn-server/usr/share/xpn/
+	find debian/xpn-server/usr/share/xpn/node_modules -type f \( -name '.npmignore' -o -name '.eslintrc*' \) -delete
 	install -m644 package.json debian/xpn-server/usr/share/xpn/
+	install -d debian/xpn-server/usr/share/xpn/deploy debian/xpn-server/usr/sbin
+	install -m644 deploy/xpn-*.service deploy/nginx-xpn-*.conf debian/xpn-server/usr/share/xpn/deploy/
+	install -m755 deploy/install-server.py deploy/create-users.sh debian/xpn-server/usr/share/xpn/deploy/
+	ln -s ../share/xpn/deploy/install-server.py debian/xpn-server/usr/sbin/xpn-server-setup
 	install -D -m755 deploy/network.sh debian/xpn-server/usr/lib/xpn/network.sh
 	for unit in deploy/xpn-*.service; do \
 	  sed -e 's|/usr/local/bin/xpnd|/usr/lib/xpn/server/xpnd|g' \
@@ -31,6 +39,7 @@ override_dh_auto_install:
 	install -m644 deploy/nginx-xpn-http.conf deploy/nginx-xpn-locations.conf debian/xpn-server/usr/share/doc/xpn-server/examples/
 	install -m644 docs/*.md debian/xpn-server/usr/share/doc/xpn-server/
 	install -D -m644 docs/PINNING.md debian/xpn-client/usr/share/doc/xpn-client/PINNING.md
+	install -D -m644 docs/LINUX-CLIENT-SERVICE.md debian/xpn-client/usr/share/doc/xpn-client/LINUX-CLIENT-SERVICE.md
 
 override_dh_installsystemd:
 	dh_installsystemd --no-enable --no-start

@@ -165,6 +165,33 @@ while True:
             ns(client_ns, 'ip', 'route', 'del', route, 'dev', 'testvpn')
             if mode == 'split': ns(client_ns, 'ip', 'route', 'del', '10.77.0.1/32', 'dev', 'testvpn')
             ns(client_ns, 'ip', 'addr', 'del', f'10.77.0.{index}/32', 'dev', 'testvpn')
+        if os.environ.get('XPN_TEST_CLIENT_SERVICE') == '1':
+            # Exercise the client directly, without a service helper, against the installed
+            # native executable, including total server loss and a fresh session.
+            service = start(['nsenter', '-t', client_ns.pid, '-n', '--', 'python3',
+                             ROOT / 'clients/linux/xpn.py', 'connect', control / 'split.json',
+                             '--native', binary,
+                             '--retry-initial', '1', '--retry-max', '2', '--stable-seconds', '120'], 'retry-client')
+            log = directory / 'retry-client.log'
+            connected = 'Connected. Ctrl-C disconnects'
+            wait_for(lambda: connected in log.read_text(), 'client connection', service)
+            server.terminate()
+            server.wait(timeout=5)
+            wait_for(lambda: 'retrying in' in log.read_text(), 'client outage retry', service)
+            server = start(identity(packet_user, packet_user.pw_gid) +
+                           [binary, 'server', '3001', control / 'control.sock', '/xpn/vpn', 'xpn0', '--loopback'], 'server-restarted')
+            wait_for(lambda: log.read_text().count(connected) >= 2, 'client reconnect', service)
+            ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '5',
+               '-o', output, 'http://192.0.2.2:8080/payload')
+            assert output.read_bytes() == payload.read_bytes(), 'Reconnected payload mismatch'
+            service.terminate()
+            service.wait(timeout=10)
+            assert service.returncode == 0, 'Client did not stop cleanly'
+            links = ns(client_ns, 'ip', '-o', 'link', 'show', capture_output=True).stdout
+            assert not any(': xpn' in line for line in links.splitlines()), 'Client TUN left after service stop'
+            tables = ns(client_ns, 'nft', 'list', 'tables', capture_output=True).stdout
+            assert 'xpn_' not in tables, 'Client firewall left after service stop'
+            print('PASS: direct client reconnected after total server outage, transferred data, stopped and removed network state', flush=True)
     except BaseException:
         for path in directory.glob('*.log'):
             print(f'{path.name}:\n{path.read_text()[-6000:]}', file=sys.stderr)

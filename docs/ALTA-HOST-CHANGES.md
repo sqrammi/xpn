@@ -6,6 +6,12 @@ Before the live installation described below: stock XPN unit files are now prese
 
 Host: `alta.jeffhansen.com`, Ubuntu 26.04.1 Resolute, x86-64. Initial work October 25, 2026; migrated to the existing checkout and one service account October 26, 2026 (America/Denver). Commands below describe completed work, not instructions to run again. Code changes are intentionally excluded.
 
+## October 27: PPA migration prepared, not executed
+
+Added `/root/xpn-ppa-migrate-20261027.sh`, mode 0700, containing the backup, package migration, verification and rollback procedure. It has not run: no PPA package/repository/key was installed on Alta and no XPN service was restarted for this release. Read-only verification at approximately 15:15 UTC confirmed all three checkout services active and `xpn-server` absent. Launchpad binary publication is the outstanding dependency. See [the release record](PPA-RELEASE-2026-10-27.md) for build-host changes and staged next steps.
+
+At this inspection, Alta already had system Node `24.22.1-1nodesource1`, independently of this release preparation. The older Node 22 statement below records the October 26 baseline.
+
 ## What remains on the host
 
 | Change | Location / identity | Purpose |
@@ -207,3 +213,37 @@ Historical migration cleanup was completed before the live installation: `/opt/x
 The migration backup can recover the old test source/build files if needed; moving Node back would require updating test paths again. Restoring a second service identity is unnecessary for the chosen single-account design. No rollback has been performed.
 
 Future Alta mutations must append a dated entry here with the commands, affected paths/services, validation, and rollback information. Keep code implementation details in Git history.
+
+### October 29: isolated Linux client-service validation
+
+- Added `/root/xpn-client-service-tests-20261029.tar` and extracted test source into
+  `/root/xpn-client-service-tests-20261029/`. Copied existing checkout
+  `node_modules` there; used `/root/repo/xpn/build/native/xpnd` without rebuilding
+  it. No packages or accounts were installed.
+- Ran the Python helper tests and `native/tools/test-as-xpn.sh --root` with
+  `XPN_TEST_CLIENT_SERVICE=1` for the TUN integration test. The wrapper exposed
+  test source read-only inside a private mount namespace; the harness used
+  private network namespaces and temporary fixture credentials. Split/full
+  transfer and complete-server-outage/reconnect checks passed. Namespace
+  processes, mounts and test network state were cleaned up.
+- Ran `/root/xpn-client-service-tests-20261029/systemd-smoke.sh`, which created
+  only the transient unit `xpn-client-service-smoke-20261029.service` using
+  `systemd-run --collect` with `PrivateNetwork=yes` and the client service's
+  restrictions. The initial `/run/xpn-client-service-smoke-20261029/` runtime
+  could not execute files because `/run` is noexec. Removed it and reran using
+  `/var/lib/xpn-client-service-smoke-20261029/`. The unit started native code,
+  retried a refused connection and stopped successfully. The script stopped and
+  collected the transient unit and removed its runtime files/directory.
+- Retained `unit-tests.log`, `tunnel-test.log`, `systemd-smoke.log`,
+  `systemd-journal.log` and the test script in the root-only test workspace for
+  review. Local Python test output is under `build/client-service-tests/`. The
+  final remote-log download and independent cleanup audit could not complete
+  because subsequent SSH connections timed out; the test exit trap completed
+  and its journal recorded a successful stop. Existing
+  `xpn-control`, `xpn-native` and `xpn-network` were active at the preceding check;
+  no persistent unit,
+  nginx configuration, live profile, host firewall or routing changes were made.
+- Cleanup, when the evidence is no longer needed: remove only
+  `/root/xpn-client-service-tests-20261029/` and its sibling `.tar` archive.
+  No production rollback is needed. No client service was enabled on Alta or
+  Draper, and this work did not migrate Alta to the PPA.

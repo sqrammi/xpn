@@ -1,0 +1,4 @@
+[
+  {"name":"nodemailer-10.2.1", "url":"https://codeload.github.com/nodemailer/nodemailer/tar.gz/8dbff1d5bcc24a86fd120c98eacffba2eccf251c", "sha256":"e5eec660f861fceb626761b756f9e09d4194a87f556d2c51549a1f8d76cfe57a"},
+  {"name":"emoji-regex-8.0.0", "url":"https://codeload.github.com/mathiasbynens/emoji-regex/tar.gz/a9f2e514523d4c0931974aff5059052da10c52c5", "sha256":"6d5ea01d858efdeb4cd3c9b65bfa8d8bf3a9ebf4528a77370695b206438f1036"}
+]
