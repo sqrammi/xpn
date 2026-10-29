@@ -19,6 +19,14 @@ def enabled():
 
 
 class GatewayTests(unittest.TestCase):
+    def test_all_devices_is_opt_in_covers_only_client_pool_and_accepts_legacy_policy(self):
+        self.assertFalse(gw.policy(enabled())['allDevices'])
+        p = {**enabled(), 'allDevices': True, 'targets': []}
+        self.assertEqual(gw.policy(p)['targets'], [])
+        self.assertIn('ip daddr { 10.77.0.2-10.77.0.254 }', gw.rules(p))
+        self.assertIn('ip saddr { 10.77.0.2-10.77.0.254 }', gw.rules(p))
+        with self.assertRaises(gw.PolicyError): gw.policy({**p, 'allDevices': 'yes'})
+
     def test_validation_rejects_injection_and_overbroad_access(self):
         for key, value in [('interface', 'wg0; flush ruleset'), ('interface', 'xpn0'),
                            ('sources', ['0.0.0.0/0']), ('sources', ['10.77.0.0/16']),

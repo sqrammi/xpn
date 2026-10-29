@@ -1,3 +1,11 @@
+xpn (0.1.2-0ubuntu1~noble1) noble; urgency=medium
+
+  * Add live, persistent WireGuard-to-XPN gateway policy in the admin console.
+  * Apply scoped forwarding through a restricted privileged broker.
+  * Include current client, server and installer regression fixes.
+
+ -- Jeff Hansen <sqrammi@hotmail.com>  Thu, 29 Oct 2026 22:10:14 +0000
+
 xpn (0.1.1-0ubuntu1~noble1) noble; urgency=medium
 
   * Add xpn-client-setup for boot-started client services.

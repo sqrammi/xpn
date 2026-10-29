@@ -226,6 +226,9 @@ while True:
                 manager = gateway.Gateway(directory / 'gateway-policy.json', check_interface=lambda _: None)
                 manager.request(dict(action='set', revision=0, policy=config))
                 assert home_get() == 0, 'Enabled gateway did not forward to the XPN client'
+                config = {**config, 'allDevices': True, 'targets': []}
+                manager.request(dict(action='set', revision=1, policy=config))
+                assert home_get() == 0, 'All-devices gateway did not forward to the XPN client'
                 assert home_get(8083) != 0, 'Unselected destination port was reachable'
                 # Split profile explicitly routes the home subnet, so this tests
                 # the server firewall rather than missing routes/client ACLs.
@@ -248,7 +251,7 @@ with socket.create_connection((sys.argv[1], 8082), timeout=3) as connection:
         pass
 ''', device_ip, ready, proceed], 'gateway-established')
                 wait_for(ready.exists, 'established gateway connection')
-                manager.request(dict(action='set', revision=1, policy={**config, 'enabled': False}))
+                manager.request(dict(action='set', revision=2, policy={**config, 'enabled': False}))
                 proceed.touch()
                 assert existing.wait(timeout=6) == 0, 'Disabled gateway passed an established connection'
                 assert home_get() != 0, 'Disabled gateway still accepted new connections'

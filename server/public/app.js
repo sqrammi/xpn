@@ -53,6 +53,8 @@ $('lock').onclick = () => { token = ''; $('workspace').hidden = true; $('login')
 
 function gatewayValues(policy) {
   $('gateway-enabled').checked = policy.enabled;
+  $('gateway-all').checked = policy.allDevices === true;
+  $('gateway-targets').disabled = policy.allDevices === true;
   $('gateway-interface').value = policy.interface;
   $('gateway-sources').value = policy.sources.join(', ');
   $('gateway-targets').value = policy.targets.join(', ');
@@ -70,6 +72,7 @@ async function refreshGateway() {
   } catch (error) { $('gateway-state').textContent = error.message; gatewayRevision = null; }
 }
 $('gateway-refresh').onclick = e => run(e.target, refreshGateway);
+$('gateway-all').onchange = e => { $('gateway-targets').disabled = e.target.checked; };
 $('gateway-form').onsubmit = e => {
   e.preventDefault();
   run(e.submitter, async () => {
@@ -78,7 +81,7 @@ $('gateway-form').onsubmit = e => {
     const ports = id => list(id).map(x => { if (!/^\d+$/.test(x)) throw new Error('Ports must be comma-separated numbers'); return Number(x); });
     const result = await api('gateway', { revision: gatewayRevision, policy: {
       enabled: $('gateway-enabled').checked, interface: $('gateway-interface').value.trim(),
-      sources: list('gateway-sources'), targets: list('gateway-targets'),
+      sources: list('gateway-sources'), targets: $('gateway-all').checked ? [] : list('gateway-targets'), allDevices: $('gateway-all').checked,
       tcpPorts: ports('gateway-tcp'), udpPorts: ports('gateway-udp'), allowPing: $('gateway-ping').checked
     }});
     gatewayRevision = result.revision; gatewayValues(result.policy);

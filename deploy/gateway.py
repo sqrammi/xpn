@@ -14,7 +14,7 @@ import tempfile
 
 STATE = Path('/var/lib/xpn-gateway/policy.json')
 SOCKET = '/run/xpn-gateway/control.sock'
-DEFAULT = dict(enabled=False, interface='wg0', sources=[], targets=[], tcpPorts=[22], udpPorts=[], allowPing=True)
+DEFAULT = dict(enabled=False, interface='wg0', sources=[], targets=[], allDevices=False, tcpPorts=[22], udpPorts=[], allowPing=True)
 
 
 class PolicyError(Exception):
@@ -22,9 +22,11 @@ class PolicyError(Exception):
 
 
 def policy(value):
+    if isinstance(value, dict) and 'allDevices' not in value:
+        value = {**value, 'allDevices': False}  # Existing saved policies/API clients.
     if not isinstance(value, dict) or set(value) != set(DEFAULT):
         raise PolicyError('Invalid gateway policy fields')
-    if type(value['enabled']) is not bool or type(value['allowPing']) is not bool:
+    if any(type(value[name]) is not bool for name in ('enabled', 'allowPing', 'allDevices')):
         raise PolicyError('Invalid gateway switches')
     iface = value['interface']
     if not isinstance(iface, str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', iface) or iface in ('lo', 'xpn0'):
@@ -54,7 +56,8 @@ def policy(value):
             except (ValueError, TypeError):
                 raise PolicyError('Invalid gateway ' + name) from None
         result[name] = sorted(set(clean))
-    if value['enabled'] and (not result['sources'] or not result['targets'] or not (result['tcpPorts'] or result['udpPorts'] or result['allowPing'])):
+    if result['allDevices']: result['targets'] = []
+    if value['enabled'] and (not result['sources'] or not (result['targets'] or result['allDevices']) or not (result['tcpPorts'] or result['udpPorts'] or result['allowPing'])):
         raise PolicyError('Select home subnets, XPN addresses and at least one allowed service')
     return result
 
@@ -64,8 +67,9 @@ def rules(value):
     lines = ['flush chain inet xpn gateway_forward', 'flush chain inet xpn gateway_nat']
     if not p['enabled']: return '\n'.join(lines) + '\n'
     def group(items): return '{ ' + ', '.join(map(str, items)) + ' }'
-    inbound = f'iifname "{p["interface"]}" oifname "xpn0" ip saddr {group(p["sources"])} ip daddr {group(p["targets"])}'
-    reply = f'iifname "xpn0" oifname "{p["interface"]}" ip saddr {group(p["targets"])} ip daddr {group(p["sources"])}'
+    targets = group(['10.77.0.2-10.77.0.254'] if p['allDevices'] else p['targets'])
+    inbound = f'iifname "{p["interface"]}" oifname "xpn0" ip saddr {group(p["sources"])} ip daddr {targets}'
+    reply = f'iifname "xpn0" oifname "{p["interface"]}" ip saddr {targets} ip daddr {group(p["sources"])}'
     for proto, ports in [('tcp', p['tcpPorts']), ('udp', p['udpPorts'])]:
         if ports:
             lines.append(f'add rule inet xpn gateway_forward {inbound} {proto} dport {group(ports)} ct state new,established accept')

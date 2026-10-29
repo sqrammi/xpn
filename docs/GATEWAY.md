@@ -2,7 +2,7 @@
 
 The server console can allow selected traffic from an existing WireGuard link into selected XPN devices. The policy is disabled by default. **Save & apply now** replaces the gateway firewall rules immediately and saves the policy for reboot, without restarting XPN or disconnecting its clients.
 
-This feature is in the source checkout after the 0.1.1 release; it is not included in the already-uploaded 0.1.1 PPA packages. Install an updated server release and rerun `xpn-server-setup` with your existing installation options, or run the updated checkout installer. That initial upgrade installs a service and new firewall chains and can restart the VPN. Subsequent web policy changes do not restart it.
+This feature requires server version 0.1.2 or newer; it is not included in 0.1.1. Install an updated server release and rerun `xpn-server-setup` with your existing installation options, or run the updated checkout installer. That initial upgrade installs a service and new firewall chains and can restart the VPN. Subsequent web policy changes do not restart it.
 
 ## Before enabling
 
@@ -19,7 +19,7 @@ Sign in with the existing admin token and open **Home network access to XPN devi
 1. Select **Enable home-to-XPN forwarding**.
 2. Enter the existing WireGuard interface, for example `wg0`.
 3. Enter the allowed home source CIDRs, for example `172.9.0.0/16`.
-4. Enter the individual destination XPN addresses, for example `10.77.0.2, 10.77.0.3`. The device list shows each address. Only active enrolled devices are accepted.
+4. Select **All XPN devices, including future enrollments**, or enter individual destination XPN addresses such as `10.77.0.2, 10.77.0.3`. Individual selections must be active enrolled devices. All-devices mode covers the client pool `.2` through `.254`; new devices are included automatically but still need the gateway reply route in their profile. Revoked identities cannot connect to XPN.
 5. Select the TCP/UDP destination ports and whether ping is allowed. For SSH and HTTPS, use TCP `22,443`.
 6. Click **Save & apply now**. Success shows that the policy is applied and saved. A stale-edit error requires **Refresh policy** before saving again.
 
