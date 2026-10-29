@@ -5,6 +5,7 @@ The supplied deployment separates privileged network setup from network-facing X
 | Component | Identity | Access |
 | --- | --- | --- |
 | `xpn-network.service` | root, short-lived setup/teardown script | Configure persistent TUN, forwarding and XPN's nftables table; exits after setup |
+| `xpn-gateway.service` | root, restricted persistent broker | Validate live gateway policies over a local socket; replace only two gateway chains; capability bounding set contains only `CAP_NET_ADMIN` |
 | `xpn-control.service` | `xpn` | Node admin/enrollment, private database, protected credential socket |
 | `xpn-native.service` | `xpn` | Attach to owned TUN, read credential snapshots via socket, accept loopback WebSockets |
 
@@ -20,7 +21,7 @@ The Linux `xpnd server` entry point now performs a mandatory check before curl/O
 - Disable process dumpability before loading device secrets.
 - Exit on any failure. There is no `--allow-root` override.
 
-The supervisor launches the server with its final identity. A manual `sudo xpnd server ...` invocation is rejected, even if the operator forgets the service restrictions. Start through `sudo systemctl start xpn-native` instead. The persistent TUN belongs to `xpn`, so the daemon does not need `CAP_NET_ADMIN` to attach. Network configuration remains in the short-lived root helper.
+The supervisor launches the server with its final identity. A manual `sudo xpnd server ...` invocation is rejected, even if the operator forgets the service restrictions. Start through `sudo systemctl start xpn-native` instead. The persistent TUN belongs to `xpn`, so the daemon does not need `CAP_NET_ADMIN` to attach. Initial network configuration remains in the short-lived root helper. The separate restricted [gateway broker](GATEWAY.md) handles optional live firewall policy changes; no privileged operations were added to Node or the packet daemon.
 
 The service also supplies an empty capability bounding/ambient set, `NoNewPrivileges=yes`, read-only system paths, protected home directories, restricted device access, hidden other-user processes, restricted namespaces and disabled core files. The bounds are process-wide inherited restrictions, not a claim of separate client sandboxes. See [systemd execution controls](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) and [Linux no_new_privs](https://www.kernel.org/doc/html/latest/userspace-api/no_new_privs.html).
 

@@ -152,9 +152,9 @@ class InstallerTests(unittest.TestCase):
                                 self.assertEqual(mutations, [('systemctl', 'stop', 'xpn-native', 'xpn-control'),
                                                              ('systemctl', 'start', 'xpn-control', 'xpn-native')])
                             elif repeat == 'host-ports':
-                                self.assertEqual(mutations, [('systemctl', 'stop', 'xpn-native', 'xpn-network'),
+                                self.assertEqual(mutations, [('systemctl', 'stop', 'xpn-native', 'xpn-gateway', 'xpn-network'),
                                                              ('systemctl', 'daemon-reload'),
-                                                             ('systemctl', 'start', 'xpn-network', 'xpn-native')])
+                                                             ('systemctl', 'start', 'xpn-network', 'xpn-gateway', 'xpn-native')])
                                 self.assertIn('Environment=XPN_HOST_TCP_PORTS=85,443,5201', (root / 'units/xpn-network.service').read_text())
                                 self.assertEqual(env.read_bytes(), before[env][0])
 

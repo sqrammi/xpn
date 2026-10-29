@@ -5,6 +5,27 @@
 <section id="login" class="panel"><h2>Unlock administration</h2><form id="login-form"><label>Admin token<input id="token" type="password" required autocomplete="current-password"></label><button>Unlock</button></form></section>
 <div id="workspace" hidden><div class="columns"><section class="panel"><h2>Add a user / device</h2><form id="create-form"><label>Name<input name="name" maxlength="80" required placeholder="Alex · MacBook"></label><label>Email <span>(optional)</span><input name="email" type="email" placeholder="alex@example.com"></label><label>Device encryption policy<select name="mode"><option value="psk">Client-selectable · TLS always required</option><option value="hybrid">Require extra encryption + ML-KEM</option></select></label><label>Traffic routing<select name="routing"><option value="full">All IPv4 traffic</option><option value="split">Selected IPv4 subnets</option></select></label><label>Subnets <span>(comma separated, split mode)</span><input name="routes" placeholder="10.20.0.0/16, 192.168.50.0/24"></label><label>DNS servers<input name="dns" value="1.1.1.1" required></label><details><summary>Server certificate &amp; SNI</summary><p class="small">Optional; blank fields use server defaults. A custom SNI requires a trusted certificate pin.</p><label>TLS SNI hostname<input name="sni" placeholder="app.jeffhansen.com" maxlength="253" autocapitalize="none" spellcheck="false"></label><label>Certificate SHA-256 fingerprints<textarea name="certificatePins" rows="3" placeholder="One fingerprint per line; up to four for certificate rotation" spellcheck="false"></textarea></label></details><button>Create &amp; show QR</button></form></section>
 <section class="panel invitation"><p class="eyebrow">DEVICE ENROLLMENT</p><h2>One scan. One identity.</h2><p id="invite-empty">An invitation will appear here. Scan it in the XPN client; it expires after 15 minutes.</p><div id="invite" hidden><img id="qr" alt="One-time VPN enrollment QR code"><label>Invitation link<textarea id="invite-uri" readonly rows="4"></textarea></label><p id="expiry"></p><p class="small">Anyone with this code can claim this device identity. Email delivery requires a trusted mailbox.</p></div></section></div>
+<section class="panel" aria-labelledby="gateway-title">
+<div class="section-heading"><h2 id="gateway-title">Home network access to XPN devices</h2><button id="gateway-refresh" type="button" class="secondary">Refresh policy</button></div>
+<p>Let your home network reach selected XPN devices through an existing WireGuard tunnel. XPN devices can reply, but cannot start connections back to your home network through this gateway.</p>
+<p id="gateway-state" role="status" aria-live="polite">Loading gateway policy…</p>
+<form id="gateway-form">
+<fieldset id="gateway-fields" disabled>
+<label class="check-label"><input id="gateway-enabled" type="checkbox">Enable home-to-XPN forwarding</label>
+<div class="columns">
+<label>WireGuard interface<input id="gateway-interface" value="wg0" maxlength="15" required spellcheck="false"></label>
+<label>Allowed home subnets<input id="gateway-sources" placeholder="192.168.50.0/24" spellcheck="false"></label>
+<label>XPN device addresses<input id="gateway-targets" placeholder="10.77.0.2, 10.77.0.3" spellcheck="false"></label>
+<label>Allowed TCP ports<input id="gateway-tcp" value="22" placeholder="22, 443" spellcheck="false"></label>
+<label>Allowed UDP ports<input id="gateway-udp" placeholder="Optional, e.g. 53" spellcheck="false"></label>
+<label class="check-label"><input id="gateway-ping" type="checkbox" checked>Allow ping</label>
+</div>
+<p class="small">Use comma-separated entries. Configure WireGuard and routes on both ends first. Home connections appear on XPN devices as 10.77.0.1. Split clients must include 10.77.0.1/32 in their imported profile; their own host firewall must allow the selected services.</p>
+<button id="gateway-save">Save &amp; apply now</button>
+</fieldset>
+</form>
+<p class="small">Changes persist across reboots and apply without restarting VPN connections. Disabling access blocks forwarded sessions immediately; re-enabling may require applications to reconnect. This does not change your other server or WireGuard firewall rules.</p>
+</section>
 <section class="panel"><div class="section-heading"><h2>Network identities</h2><button id="refresh" class="secondary">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Device</th><th>Address</th><th>Policy</th><th>Status</th><th>Actions</th></tr></thead><tbody id="users"></tbody></table></div></section><button id="lock" class="secondary">Lock administration</button></div><p id="status" role="status" aria-live="polite"></p></main>
 <dialog id="transport-dialog" aria-labelledby="transport-title">
 <h2 id="transport-title">Server trust</h2>

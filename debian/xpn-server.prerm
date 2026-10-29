@@ -4,7 +4,7 @@ case "$1" in
     remove|deconfigure|upgrade)
         if [ -d /run/systemd/system ]; then
             # Updates deliberately stop the tunnel; explicit restart follows validation.
-            deb-systemd-invoke stop xpn-native.service xpn-control.service xpn-network.service || true
+            deb-systemd-invoke stop xpn-native.service xpn-control.service xpn-gateway.service xpn-network.service || true
         fi
         ;;
 esac

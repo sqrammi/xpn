@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
+import { gatewayTargetsReady } from './gateway.mjs';
 
 const equal = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
@@ -12,7 +13,7 @@ async function body(req) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an object');
   return value;
 }
-export function createApp({ store, adminToken, publicURL, mailer }) {
+export function createApp({ store, adminToken, publicURL, mailer, gateway }) {
   const origin = new URL(publicURL).origin, base = new URL(publicURL).pathname.replace(/\/$/, '');
   const limits = new Map();
   function rate(req, scope, max) {
@@ -38,6 +39,23 @@ export function createApp({ store, adminToken, publicURL, mailer }) {
       if (path.startsWith(base + '/api/')) {
         if (!rate(req, 'admin', 120)) return json(res, 429, { error: 'Try later' });
         if (!equal(req.headers.authorization, `Bearer ${adminToken}`)) return json(res, 401, { error: 'Unauthorized' });
+        if (path === base + '/api/gateway' && ['GET', 'POST'].includes(req.method)) {
+          if (!gateway) return json(res, 503, { error: 'Gateway helper is not installed; update the server and rerun setup' });
+          let message = { action: 'get' };
+          if (req.method === 'POST') {
+            const input = await body(req);
+            if (input.policy?.enabled && !gatewayTargetsReady(store.list(), input.policy.targets)) {
+              return json(res, 400, { error: 'Select active XPN devices whose routing policy includes 10.77.0.1; split clients need that route in their imported profile' });
+            }
+            message = { action: 'set', revision: input.revision, policy: input.policy };
+          }
+          let result;
+          try { result = await gateway(message); }
+          catch { return json(res, 503, { error: 'Gateway helper unavailable; check xpn-gateway.service' }); }
+          if (result.error) return json(res, [400, 409, 503].includes(result.status) ? result.status : 503, { error: result.error });
+          if (req.method === 'POST') store.audit('gateway.update', null);
+          return json(res, 200, result);
+        }
         if (path === base + '/api/users' && req.method === 'GET') return json(res, 200, store.list());
         let result;
         if (path === base + '/api/users' && req.method === 'POST') result = store.create(await body(req));

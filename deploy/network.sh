@@ -33,6 +33,8 @@ else XPN_DELETE=''; fi
 nft -f - <<EOF
 $XPN_DELETE
 table inet xpn {
+    chain gateway_forward { }
+    chain gateway_nat { }
     chain input {
         type filter hook input priority -10; policy accept;
         iifname "xpn0" ip saddr != 10.77.0.0/24 drop
@@ -45,6 +47,7 @@ table inet xpn {
     chain forward {
         type filter hook forward priority -10; policy accept;
         iifname "xpn0" ip saddr != 10.77.0.0/24 drop
+        jump gateway_forward
         iifname "xpn0" ip daddr { 10.77.0.0/24, 169.254.0.0/16, 127.0.0.0/8, 224.0.0.0/4 } drop
         iifname "xpn0" oifname "$XPN_WAN_IFACE" accept
         iifname "$XPN_WAN_IFACE" oifname "xpn0" ct state established,related accept
@@ -53,6 +56,7 @@ table inet xpn {
     }
     chain nat {
         type nat hook postrouting priority srcnat; policy accept;
+        jump gateway_nat
         ip saddr 10.77.0.0/24 oifname "$XPN_WAN_IFACE" masquerade
     }
 }

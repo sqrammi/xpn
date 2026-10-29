@@ -6,6 +6,8 @@ util-linux and a built xpnd. Run: sudo env PATH="$PATH" python3
 native/tests/tun-integration.py /absolute/path/to/xpnd
 """
 import os
+import json
+import importlib.util
 from pathlib import Path
 import pwd
 import shutil
@@ -184,6 +186,74 @@ while True:
             ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '5',
                '-o', output, 'http://192.0.2.2:8080/payload')
             assert output.read_bytes() == payload.read_bytes(), 'Reconnected payload mismatch'
+            if os.environ.get('XPN_TEST_GATEWAY') == '1':
+                # A veth models decrypted WireGuard ingress; the broker's actual
+                # WireGuard interface check is tested separately.
+                spec = importlib.util.spec_from_file_location('gateway', ROOT / 'deploy/gateway.py')
+                gateway = importlib.util.module_from_spec(spec); spec.loader.exec_module(gateway)
+                run('ip', 'link', 'add', 'wg-check', 'type', 'wireguard')
+                gateway.wireguard_interface('wg-check')
+                home = namespace('home-ns')
+                run('ip', 'link', 'add', 'gw-test', 'type', 'veth', 'peer', 'name', 'home0')
+                run('ip', 'link', 'set', 'home0', 'netns', home.pid)
+                run('ip', 'addr', 'add', '198.19.0.1/30', 'dev', 'gw-test')
+                run('ip', 'link', 'set', 'gw-test', 'up')
+                ns(home, 'ip', 'addr', 'add', '198.19.0.2/30', 'dev', 'home0')
+                ns(home, 'ip', 'link', 'set', 'home0', 'up')
+                ns(home, 'ip', 'route', 'add', '10.77.0.0/24', 'via', '198.19.0.1')
+                device_ip = json.loads((control / 'split.json').read_text())['address']
+                start(['nsenter', '-t', client_ns.pid, '-n', '--', 'python3', '-m', 'http.server',
+                       '8082', '--bind', device_ip, '--directory', web], 'gateway-device-http')
+                start(['nsenter', '-t', client_ns.pid, '-n', '--', 'python3', '-m', 'http.server',
+                       '8083', '--bind', device_ip, '--directory', web], 'gateway-device-private-http')
+                start(['nsenter', '-t', home.pid, '-n', '--', 'python3', '-m', 'http.server',
+                       '8083', '--bind', '198.19.0.2', '--directory', web], 'gateway-home-http')
+                # Listen checks are inside their namespaces, without creating tunnel traffic.
+                wait_for(lambda: ':8082' in ns(client_ns, 'ss', '-ltn', capture_output=True).stdout, 'device HTTP listener')
+                wait_for(lambda: ':8083' in ns(client_ns, 'ss', '-ltn', capture_output=True).stdout, 'device private HTTP listener')
+                wait_for(lambda: ':8083' in ns(home, 'ss', '-ltn', capture_output=True).stdout, 'home HTTP listener')
+                def home_get(port=8082):
+                    return ns(home, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '2',
+                              '-o', '/dev/null', f'http://{device_ip}:{port}/payload', check=False).returncode
+                assert home_get() != 0, 'Gateway opened before opt-in'
+                config = dict(enabled=True, interface='gw-test', sources=['198.19.0.2/32'],
+                              targets=[device_ip], tcpPorts=[8082], udpPorts=[], allowPing=True)
+                try:
+                    gateway.wireguard_interface('gw-test')
+                    raise AssertionError('Non-WireGuard interface accepted')
+                except gateway.PolicyError:
+                    pass
+                manager = gateway.Gateway(directory / 'gateway-policy.json', check_interface=lambda _: None)
+                manager.request(dict(action='set', revision=0, policy=config))
+                assert home_get() == 0, 'Enabled gateway did not forward to the XPN client'
+                assert home_get(8083) != 0, 'Unselected destination port was reachable'
+                # Split profile explicitly routes the home subnet, so this tests
+                # the server firewall rather than missing routes/client ACLs.
+                assert ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '2',
+                          '-o', '/dev/null', 'http://198.19.0.2:8083/payload', check=False).returncode != 0, 'XPN initiated a home connection'
+                # Keep a TCP connection established across the live disable.
+                ready, proceed = directory / 'gateway-connected', directory / 'gateway-disabled'
+                existing = start(['nsenter', '-t', home.pid, '-n', '--', 'python3', '-c', '''
+import pathlib, socket, sys, time
+with socket.create_connection((sys.argv[1], 8082), timeout=3) as connection:
+    pathlib.Path(sys.argv[2]).touch()
+    deadline = time.monotonic() + 10
+    while not pathlib.Path(sys.argv[3]).exists():
+        if time.monotonic() > deadline: raise RuntimeError('Disable signal missing')
+        time.sleep(0.05)
+    connection.sendall(b'GET /payload HTTP/1.0\\r\\n\\r\\n')
+    try:
+        if connection.recv(1024): raise RuntimeError('Disabled gateway passed established traffic')
+    except socket.timeout:
+        pass
+''', device_ip, ready, proceed], 'gateway-established')
+                wait_for(ready.exists, 'established gateway connection')
+                manager.request(dict(action='set', revision=1, policy={**config, 'enabled': False}))
+                proceed.touch()
+                assert existing.wait(timeout=6) == 0, 'Disabled gateway passed an established connection'
+                assert home_get() != 0, 'Disabled gateway still accepted new connections'
+                assert service.poll() is None and log.read_text().count(connected) == 2, 'Policy update restarted the tunnel'
+                print('PASS: live gateway opt-in, scoped ports, SNAT replies, reverse isolation and disable without reconnect', flush=True)
             service.terminate()
             service.wait(timeout=10)
             assert service.returncode == 0, 'Client did not stop cleanly'

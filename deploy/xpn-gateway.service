@@ -1,0 +1,27 @@
+[Unit]
+Description=XPN restricted live gateway policy helper
+Requires=xpn-network.service
+After=xpn-network.service
+PartOf=xpn-network.service
+
+[Service]
+Type=simple
+User=root
+Group=xpn
+ExecStart=/usr/bin/python3 /opt/xpn/deploy/gateway.py
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=xpn-gateway
+RuntimeDirectoryMode=0750
+StateDirectory=xpn-gateway
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

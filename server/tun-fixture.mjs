@@ -9,7 +9,7 @@ const pin = new X509Certificate(readFileSync(`${directory}/cert.pem`)).fingerpri
 const store = new Store(':memory:', randomBytes(32).toString('hex'), 'https://198.18.0.1:8443/xpn');
 for (const fullTunnel of [false, true]) {
   const { user } = store.create({ name: fullTunnel ? 'full' : 'split', fullTunnel,
-    routes: ['192.0.2.0/24', '10.77.0.1/32'], sni: 'app.jeffhansen.com', certificatePins: [pin] });
+    routes: ['192.0.2.0/24', '10.77.0.1/32', ...(process.env.XPN_TEST_GATEWAY === '1' ? ['198.19.0.0/30'] : [])], sni: 'app.jeffhansen.com', certificatePins: [pin] });
   writeFileSync(`${directory}/control/${user.name}.json`, JSON.stringify(store.credential(user.id)), { mode: 0o600 });
 }
 const server = createInternal(store);

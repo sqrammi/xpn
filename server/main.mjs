@@ -1,5 +1,6 @@
 import { mkdir, chmod, unlink, stat } from 'node:fs/promises';
 import nodemailer from 'nodemailer';
+import { gatewayRequest } from './gateway.mjs';
 import { Store } from './store.mjs';
 import { createApp, createInternal } from './app.mjs';
 
@@ -15,7 +16,7 @@ const store = new Store(data + '/xpn.db', MASTER_KEY, PUBLIC_URL, {
   certificatePins: (process.env.VPN_CERTIFICATE_PINS || '').split(',').map(x => x.trim()).filter(Boolean),
 });
 const mailer = SMTP_URL ? nodemailer.createTransport({ ...nodemailer.createTransport(SMTP_URL).options, requireTLS: true, disableFileAccess: true, disableUrlAccess: true }, { from: SMTP_FROM }) : null;
-const app = createApp({ store, publicURL: PUBLIC_URL, adminToken: ADMIN_TOKEN, mailer });
+const app = createApp({ store, publicURL: PUBLIC_URL, adminToken: ADMIN_TOKEN, mailer, gateway: gatewayRequest });
 const socket = process.env.CONTROL_SOCKET || data + '/control.sock';
 try { const s = await stat(socket); if (!s.isSocket()) throw new Error('Control path is not a socket'); await unlink(socket); } catch (err) { if (err.code !== 'ENOENT') throw err; }
 const internal = createInternal(store);

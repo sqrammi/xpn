@@ -40,7 +40,7 @@ def main():
     for folder in ['server/public', 'native/src', 'native/include', 'native/tests', 'clients/linux', 'deploy', 'packaging']:
         shutil.copytree(root / folder, source / folder, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     (source / 'docs').mkdir()
-    for name in ['PROTOCOL.md', 'PINNING.md', 'PRIVILEGE-SEPARATION.md', 'UBUNTU-PPA.md', 'LINUX-CLIENT-SERVICE.md']:
+    for name in ['PROTOCOL.md', 'PINNING.md', 'PRIVILEGE-SEPARATION.md', 'UBUNTU-PPA.md', 'LINUX-CLIENT-SERVICE.md', 'GATEWAY.md']:
         shutil.copy2(root / 'docs' / name, source / 'docs' / name)
     for pattern in ['server/*.mjs', 'package.json', 'package-lock.json', 'README.md', 'native/CMakeLists.txt', 'native/tools/test-as-xpn.sh', 'LICENSE*']:
         for path in root.glob(pattern):

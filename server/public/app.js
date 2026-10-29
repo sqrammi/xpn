@@ -1,5 +1,6 @@
 let token = '';
 let editingUser = null;
+let gatewayRevision = null;
 const $ = id => document.getElementById(id);
 async function api(path, value) {
   const response = await fetch('api/' + path, { method: value ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: value ? JSON.stringify(value) : undefined });
@@ -33,7 +34,7 @@ async function refresh() {
     tr.append(actions); $('users').append(tr);
   }
 }
-$('login-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { token = $('token').value; await refresh(); $('token').value = ''; $('login').hidden = true; $('workspace').hidden = false; }); };
+$('login-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { token = $('token').value; await refresh(); $('token').value = ''; $('login').hidden = true; $('workspace').hidden = false; await refreshGateway(); }); };
 $('create-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = Object.fromEntries(new FormData(e.target)); data.fullTunnel = data.routing === 'full'; data.routes = data.routes.split(',').map(x => x.trim()).filter(Boolean); data.dns = data.dns.split(',').map(x => x.trim()); data.sni = data.sni.trim(); if (!data.sni) delete data.sni; const pins = data.certificatePins.split(/[\s,]+/).filter(Boolean); if (pins.length) data.certificatePins = pins; else delete data.certificatePins; const result = await api('users', data); show(result.invitation); await refresh(); }); };
 $('refresh').onclick = e => run(e.target, refresh);
 $('transport-cancel').onclick = () => { $('transport-dialog').close(); editingUser = null; };
@@ -49,3 +50,39 @@ $('transport-form').onsubmit = async e => {
   finally { button.disabled = false; }
 };
 $('lock').onclick = () => { token = ''; $('workspace').hidden = true; $('login').hidden = false; $('qr').removeAttribute('src'); $('invite-uri').value = ''; $('invite').hidden = true; $('invite-empty').hidden = false; $('users').replaceChildren(); };
+
+function gatewayValues(policy) {
+  $('gateway-enabled').checked = policy.enabled;
+  $('gateway-interface').value = policy.interface;
+  $('gateway-sources').value = policy.sources.join(', ');
+  $('gateway-targets').value = policy.targets.join(', ');
+  $('gateway-tcp').value = policy.tcpPorts.join(', ');
+  $('gateway-udp').value = policy.udpPorts.join(', ');
+  $('gateway-ping').checked = policy.allowPing;
+}
+async function refreshGateway() {
+  $('gateway-fields').disabled = true;
+  try {
+    const result = await api('gateway'); gatewayRevision = result.revision;
+    gatewayValues(result.policy);
+    $('gateway-state').textContent = result.policy.enabled ? 'Enabled · saved policy is active' : 'Disabled · unsolicited forwarding remains blocked';
+    $('gateway-fields').disabled = false;
+  } catch (error) { $('gateway-state').textContent = error.message; gatewayRevision = null; }
+}
+$('gateway-refresh').onclick = e => run(e.target, refreshGateway);
+$('gateway-form').onsubmit = e => {
+  e.preventDefault();
+  run(e.submitter, async () => {
+    if (gatewayRevision === null) throw new Error('Refresh gateway policy before saving');
+    const list = id => $(id).value.split(',').map(x => x.trim()).filter(Boolean);
+    const ports = id => list(id).map(x => { if (!/^\d+$/.test(x)) throw new Error('Ports must be comma-separated numbers'); return Number(x); });
+    const result = await api('gateway', { revision: gatewayRevision, policy: {
+      enabled: $('gateway-enabled').checked, interface: $('gateway-interface').value.trim(),
+      sources: list('gateway-sources'), targets: list('gateway-targets'),
+      tcpPorts: ports('gateway-tcp'), udpPorts: ports('gateway-udp'), allowPing: $('gateway-ping').checked
+    }});
+    gatewayRevision = result.revision; gatewayValues(result.policy);
+    $('gateway-state').textContent = result.policy.enabled ? 'Enabled · applied now and saved for reboot' : 'Disabled · forwarded access blocked now';
+    $('status').textContent = 'Gateway policy applied without restarting VPN connections.';
+  });
+};

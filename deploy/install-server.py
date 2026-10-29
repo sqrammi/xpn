@@ -27,7 +27,7 @@ PACKAGED = SOURCE == Path('/usr/share/xpn')
 PACKAGE_BINARY = Path('/usr/lib/xpn/server/xpnd')
 NODE_VERSION = '24.22.1'
 MARKER = '# Managed by XPN install-server.py'
-UNITS = ['xpn-network', 'xpn-control', 'xpn-native']
+UNITS = ['xpn-network', 'xpn-gateway', 'xpn-control', 'xpn-native']
 ENV = Path('/etc/xpn.env')
 STATE = Path('/etc/xpn/install.json')
 HTTP = Path('/etc/nginx/conf.d/xpn-http.conf')
@@ -202,8 +202,11 @@ def unit_files(source, node, port, base, host_ports='22,443'):
                             f'BindReadOnlyPaths={source}:{view}\nExecStart=/usr/bin/env {view}/build/native/xpnd server {port} /run/xpn/control.sock {base}/vpn xpn0 --loopback')
     network = (source / 'deploy/xpn-network.service').read_text().replace('/opt/xpn/deploy/network.sh', f'/bin/sh {source}/deploy/network.sh')
     network = network.replace('[Service]\n', f'[Service]\nEnvironment=XPN_HOST_TCP_PORTS={host_tcp_ports(host_ports)}\n')
+    gateway = (source / 'deploy/xpn-gateway.service').read_text()
+    gateway = gateway.replace('ExecStart=/usr/bin/python3 /opt/xpn/deploy/gateway.py',
+                              f'BindReadOnlyPaths={source}:{view}\nExecStart=/usr/bin/python3 {view}/deploy/gateway.py')
     return {UNIT_DIR / f'{name}.service': MARKER + '\n' + body
-            for name, body in zip(UNITS, [network, control, native])}
+            for name, body in zip(UNITS, [network, gateway, control, native])}
 
 
 def package_unit_files(port, base, host_ports):
@@ -516,6 +519,7 @@ def install(args):
         # include the dependent to restore it even when its own file is current.
         units = set(units)
         if units & {'xpn-control', 'xpn-network'}: units.add('xpn-native')
+        if 'xpn-network' in units: units.add('xpn-gateway')
         targets = [u for u in reversed(UNITS) if u in units & active - stopped]
         if targets:
             stopped.update(targets)
@@ -594,6 +598,7 @@ def install(args):
         applied = {
             'xpn-control': fingerprint(tree_files(source / 'server') + [node]) + hashlib.sha256(env_text.encode()).hexdigest() + fingerprint(tree_files(modules)),
             'xpn-native': fingerprint([binary]),
+            'xpn-gateway': fingerprint([source / 'deploy/gateway.py']),
             'xpn-network': fingerprint([Path('/usr/lib/xpn/network.sh') if PACKAGED else source / 'deploy/network.sh']),
         }
         needs_restart = {u for u in UNITS if previous.get('applied', {}).get(u) != applied[u]}
@@ -617,7 +622,7 @@ def install(args):
         for path in obsolete:
             unit_changed |= changes.remove(path, 'managed checkout unit; use package vendor unit instead')
         for path, body in units.items():
-            reason = 'package service configuration' if PACKAGED else ('network setup service' if path.stem == 'xpn-network' else
+            reason = 'package service configuration' if PACKAGED else ('restricted root gateway policy helper' if path.stem == 'xpn-gateway' else 'network setup service' if path.stem == 'xpn-network' else
                       'non-root service with read-only checkout mounted at /run/xpn-source')
             unit_changed |= content_differs(path, body)
             changes.write(path, body, reason=reason)
@@ -641,6 +646,8 @@ def install(args):
             if 'xpn-network' in to_start:
                 changes.changed('xpn0 / inet xpn / net.ipv4.*', 'Applied TUN 10.77.0.1/24, MTU 1400, VPN firewall/NAT, IPv4 forwarding=1, xpn0 rp_filter=2 and accept_source_route=0')
                 changes.changed('inet xpn input', f'Allowed VPN clients to ping the host and access TCP ports {host_ports}; other host traffic remains blocked')
+            if 'xpn-gateway' in to_start:
+                changes.changed('/run/xpn-gateway and /var/lib/xpn-gateway', 'Restricted helper initialized; gateway remains disabled unless previously enabled in the web console')
             if 'xpn-control' in to_start:
                 changes.changed('/run/xpn and /var/lib/xpn', 'Service initialized/reused runtime socket and persistent database directories')
         token = read_environment(env_text)['ADMIN_TOKEN']

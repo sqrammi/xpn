@@ -42,7 +42,7 @@ jobs:
           sudo sh deploy/create-users.sh
           # The service account cannot traverse a private runner home directory.
           # Expose this checkout read-only in a private mount namespace.
-          sudo env PATH="$PATH" XPN_TEST_CLIENT_SERVICE=1 ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
+          sudo env PATH="$PATH" XPN_TEST_CLIENT_SERVICE=1 XPN_TEST_GATEWAY=1 ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
           sudo env PATH="$PATH" XPN_TEST_INNER=0 ASAN_OPTIONS=detect_leaks=0 sh native/tools/test-as-xpn.sh --root python3 native/tests/tun-integration.py /tmp/xpn-build/xpnd
       - name: Certificate pinning and custom SNI through nginx
         run: |

@@ -2,6 +2,61 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
+## October 29: live home-to-XPN gateway policy
+
+Implemented a disabled-by-default web panel, authenticated admin endpoint and
+restricted root broker for WireGuard-to-XPN forwarding. See [gateway setup and
+policy behavior](GATEWAY.md). This change is not in the uploaded 0.1.1 packages
+and has not been deployed on Alta or Draper.
+
+Local verification: 13 Node tests passed, and 60 Python tests completed with
+59 passed and one Linux-only test skipped. Coverage includes admin authentication
+and origin checks, selected-device routing prerequisites, stale revisions,
+malformed policies, atomic nft transaction construction, persistence, rollback
+after a failed save, socket peer UID checks, bounded requests and WireGuard
+interface validation. JavaScript and shell syntax checks and `git diff --check`
+passed. No C code was built locally.
+
+A disposable localhost preview verified the panel's enable/save and disable/save
+flows with an in-memory policy broker. The screenshot is
+`build/gateway-preview.png`; this preview did not change any actual firewall.
+
+Remote test workspace: `seven-root:/root/xpn-gateway-tests-20261029`, with its
+snapshot archive at `/root/xpn-gateway-tests-20261029.tar.gz`. Tests use an existing
+0.1.1 native binary and disposable mount/network namespaces, not the host's live
+routes/firewall. The workspace directory was made traversable (`0755`) for the
+test account through the private bind mount; `/root` permissions were unchanged.
+Logs are in `gateway-tun.log`. No production services were installed or restarted.
+
+The initial real-TUN run passed existing split/full routing, non-root server
+threads and pinned custom-SNI WSS checks. The new gateway test reached the XPN
+device with source NAT `10.77.0.1`, but its HTTP fixture returned 404 because it
+served the wrong directory. The fixture was corrected and the test strengthened
+to check a listening disallowed port and an established connection across policy
+disable. The corrected end-to-end run and the new broker's actual systemd sandbox
+remain pending authorization to transfer the updated files to seven-root.
+Automatic approval review rejected that transfer; no workaround was attempted.
+The test models decrypted WireGuard traffic with a veth, separately checking an
+actual kernel WireGuard interface type. A real Route10 tunnel has not been tested.
+
+## October 29: 0.1.1 PPA rebuild validation
+
+Version 0.1.1 client/server packages built on Noble (`little-guy-root`) and
+Resolute (`seven-root`). Both hosts passed all five native CTest cases, all 48
+Python tests, Node tests/syntax checks, real-TUN split/full transfers and direct
+client recovery after a complete server outage. Outer-only transport, delayed
+standby failover and wrong-pin rejection passed; Resolute also passed hybrid
+ML-KEM. Binary lintian found no issues.
+
+Installed both test packages on each build host, then verified the packaged
+`xpn-client-setup` enables a unit that executes `/usr/bin/xpn connect` directly.
+Under the unit's restrictions plus `PrivateNetwork=yes`, the installed client
+started native code and retried an unavailable endpoint. Test units, boot links
+and profiles were removed; server services remain inactive. No production server
+or Mac C build was involved. Signed source sets were checksum/signature verified and uploaded successfully;
+Launchpad builds/publication remain pending.
+See [release record](PPA-RELEASE-2026-10-29.md) for paths and status.
+
 ## October 29 follow-up: retries belong to the Linux client
 
 The implementation below was revised after the user's clarification: retry

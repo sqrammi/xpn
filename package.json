@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server/main.mjs",
     "test": "node --test server/*.test.mjs",
-    "check": "node --check server/main.mjs && node --check server/app.mjs && node --check server/store.mjs && node --check server/public/app.js && node --check server/public/join.js"
+    "check": "node --check server/main.mjs && node --check server/app.mjs && node --check server/gateway.mjs && node --check server/store.mjs && node --check server/public/app.js && node --check server/public/join.js"
   },
   "dependencies": {
     "nodemailer": "10.2.1",

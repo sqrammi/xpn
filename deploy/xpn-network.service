@@ -2,7 +2,8 @@
 Description=XPN persistent TUN and forwarding rules
 After=network-online.target
 Wants=network-online.target
-Before=xpn-native.service
+Before=xpn-native.service xpn-gateway.service
+Wants=xpn-gateway.service
 
 [Service]
 Type=oneshot
