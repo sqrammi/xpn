@@ -2,6 +2,19 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
+## October 30: 0.1.4 release validation
+
+Both Noble and Resolute client/server packages built from committed base
+`03850d6` plus 0.1.4 release metadata passed 5 native CTests, 63 Python tests,
+13 Node tests, lintian, full/split real-TUN tests (including complete Linux
+full-tunnel setup and cleanup), peer ping, incoming-traffic/external-firewall
+checks, reconnect, standby, certificate-pin rejection and installed-service
+smoke tests. Resolute also passed hybrid ML-KEM. Retrieved artifact hashes and
+identical source archives were verified. Both source releases were signed on ren,
+signature/hash verified and successfully uploaded to the PPA. Launchpad acceptance
+and APT publication are pending; no production deployment has occurred.
+See [0.1.4 release record](PPA-RELEASE-0.1.4-2026-10-30.md).
+
 ## October 30: split routing and general incoming traffic
 
 Confirmed Draper600's server and imported client profiles both contained

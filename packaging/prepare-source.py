@@ -100,7 +100,7 @@ def main():
     package_version = f'{version}-0ubuntu1~{args.series}{args.revision}'
     (source / 'debian/changelog').write_text(
         f'xpn ({package_version}) {args.series}; urgency=medium\n\n'
-        '  * Add live server-wide peer ping policy and native client support.\n\n'
+        '  * Fix full-tunnel setup, clarify subnet routing and add incoming-traffic controls.\n\n'
         f' -- {maintainer}  {format_datetime(datetime.fromtimestamp(epoch, timezone.utc))}\n')
     for path in ['rules', 'xpn-server.postinst', 'xpn-server.prerm']:
         (source / 'debian' / path).chmod(0o755)

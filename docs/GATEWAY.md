@@ -5,8 +5,8 @@ only on the server, never in device profiles. **Save & apply now** changes the
 policy live and persists it for reboot, without reconnecting VPN clients.
 Incoming traffic is disabled by default.
 
-The general firewall mode and new labels are working-tree changes after 0.1.3;
-they are not in that published package. The earlier scoped WireGuard mode was
+The general firewall mode and new labels are included in 0.1.4. They are not
+available in 0.1.3. The earlier scoped WireGuard mode was
 introduced in 0.1.2. Existing saved policies are interpreted as restricted mode
 on upgrade, preserving their existing access instead of silently broadening it.
 
