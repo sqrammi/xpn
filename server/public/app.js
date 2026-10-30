@@ -35,7 +35,16 @@ async function refresh() {
   }
 }
 $('login-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { token = $('token').value; await refresh(); $('token').value = ''; $('login').hidden = true; $('workspace').hidden = false; await refreshGateway(); }); };
-$('create-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = Object.fromEntries(new FormData(e.target)); data.fullTunnel = data.routing === 'full'; data.routes = data.routes.split(',').map(x => x.trim()).filter(Boolean); data.dns = data.dns.split(',').map(x => x.trim()); data.sni = data.sni.trim(); if (!data.sni) delete data.sni; const pins = data.certificatePins.split(/[\s,]+/).filter(Boolean); if (pins.length) data.certificatePins = pins; else delete data.certificatePins; const result = await api('users', data); show(result.invitation); await refresh(); }); };
+const createRouting = $('create-form').elements.routing;
+const createRoutes = $('create-form').elements.routes;
+function updateCreateRouting() {
+  const split = createRouting.value === 'split';
+  createRoutes.disabled = !split;
+  createRoutes.required = split;
+}
+createRouting.onchange = updateCreateRouting;
+updateCreateRouting();
+$('create-form').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => { const data = Object.fromEntries(new FormData(e.target)); data.fullTunnel = data.routing === 'full'; data.routes = data.fullTunnel ? [] : (data.routes || '').split(',').map(x => x.trim()).filter(Boolean); data.dns = data.dns.split(',').map(x => x.trim()); data.sni = data.sni.trim(); if (!data.sni) delete data.sni; const pins = data.certificatePins.split(/[\s,]+/).filter(Boolean); if (pins.length) data.certificatePins = pins; else delete data.certificatePins; const result = await api('users', data); show(result.invitation); await refresh(); }); };
 $('refresh').onclick = e => run(e.target, refresh);
 $('transport-cancel').onclick = () => { $('transport-dialog').close(); editingUser = null; };
 $('transport-form').onsubmit = async e => {
@@ -52,7 +61,11 @@ $('transport-form').onsubmit = async e => {
 $('lock').onclick = () => { token = ''; $('workspace').hidden = true; $('login').hidden = false; $('qr').removeAttribute('src'); $('invite-uri').value = ''; $('invite').hidden = true; $('invite-empty').hidden = false; $('users').replaceChildren(); };
 
 function gatewayValues(policy) {
+  $('gateway-filter').value = policy.filterMode || 'restricted';
+  $('gateway-restrictions').disabled = $('gateway-filter').value === 'firewall';
+  $('gateway-restrictions').hidden = $('gateway-filter').value === 'firewall';
   $('gateway-enabled').checked = policy.enabled;
+  $('gateway-client-ping').checked = policy.allowClientPing === true;
   $('gateway-all').checked = policy.allDevices === true;
   $('gateway-targets').disabled = policy.allDevices === true;
   $('gateway-interface').value = policy.interface;
@@ -67,11 +80,16 @@ async function refreshGateway() {
   try {
     const result = await api('gateway'); gatewayRevision = result.revision;
     gatewayValues(result.policy);
-    $('gateway-state').textContent = result.policy.enabled ? 'Enabled · saved policy is active' : 'Disabled · unsolicited forwarding remains blocked';
+    $('gateway-state').textContent = `Incoming traffic: ${result.policy.enabled ? 'enabled' : 'disabled'} · Client ping: ${result.policy.allowClientPing ? 'enabled' : 'disabled'} · Saved policy is active`;
     $('gateway-fields').disabled = false;
   } catch (error) { $('gateway-state').textContent = error.message; gatewayRevision = null; }
 }
 $('gateway-refresh').onclick = e => run(e.target, refreshGateway);
+$('gateway-filter').onchange = () => {
+  const useFirewall = $('gateway-filter').value === 'firewall';
+  $('gateway-restrictions').disabled = useFirewall;
+  $('gateway-restrictions').hidden = useFirewall;
+};
 $('gateway-all').onchange = e => { $('gateway-targets').disabled = e.target.checked; };
 $('gateway-form').onsubmit = e => {
   e.preventDefault();
@@ -79,13 +97,15 @@ $('gateway-form').onsubmit = e => {
     if (gatewayRevision === null) throw new Error('Refresh gateway policy before saving');
     const list = id => $(id).value.split(',').map(x => x.trim()).filter(Boolean);
     const ports = id => list(id).map(x => { if (!/^\d+$/.test(x)) throw new Error('Ports must be comma-separated numbers'); return Number(x); });
+    const useFirewall = $('gateway-filter').value === 'firewall';
     const result = await api('gateway', { revision: gatewayRevision, policy: {
-      enabled: $('gateway-enabled').checked, interface: $('gateway-interface').value.trim(),
-      sources: list('gateway-sources'), targets: $('gateway-all').checked ? [] : list('gateway-targets'), allDevices: $('gateway-all').checked,
+      filterMode: $('gateway-filter').value,
+      allowClientPing: $('gateway-client-ping').checked, enabled: $('gateway-enabled').checked, interface: $('gateway-interface').value.trim(),
+      sources: list('gateway-sources'), targets: useFirewall || $('gateway-all').checked ? [] : list('gateway-targets'), allDevices: useFirewall || $('gateway-all').checked,
       tcpPorts: ports('gateway-tcp'), udpPorts: ports('gateway-udp'), allowPing: $('gateway-ping').checked
     }});
     gatewayRevision = result.revision; gatewayValues(result.policy);
-    $('gateway-state').textContent = result.policy.enabled ? 'Enabled · applied now and saved for reboot' : 'Disabled · forwarded access blocked now';
+    $('gateway-state').textContent = `Incoming traffic: ${result.policy.enabled ? 'enabled' : 'disabled'} · Client ping: ${result.policy.allowClientPing ? 'enabled' : 'disabled'} · Applied now and saved for reboot`;
     $('status').textContent = 'Gateway policy applied without restarting VPN connections.';
   });
 };

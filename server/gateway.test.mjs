@@ -36,7 +36,9 @@ test('gateway API authenticates, rejects cross-origin and unsuitable devices, pa
     assert.equal(calls.at(-1).policy.allDevices, true);
     const split = store.create({ name: 'needs gateway route', fullTunnel: false, routes: ['192.0.2.0/24'] }).user;
     assert.equal((await request({ revision: 1, policy: all })).status, 400);
+    assert.equal((await request({ revision: 1, policy: { ...all, filterMode: 'firewall', allDevices: false } })).status, 400);
     store.revoke(split.id);
+    assert.equal((await request({ revision: 1, policy: { ...all, filterMode: 'firewall', sources: [] } })).status, 200);
     store.revoke(user.id);
     assert.equal((await request({ revision: 1, policy })).status, 400);
     fail = true;

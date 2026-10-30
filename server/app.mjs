@@ -45,7 +45,7 @@ export function createApp({ store, adminToken, publicURL, mailer, gateway }) {
           if (req.method === 'POST') {
             const input = await body(req);
             const users = store.list();
-            const targets = input.policy?.allDevices === true ? users.filter(u => !u.revoked).map(u => u.ip) : input.policy?.targets;
+            const targets = (input.policy?.allDevices === true || input.policy?.filterMode === 'firewall') ? users.filter(u => !u.revoked).map(u => u.ip) : input.policy?.targets;
             if (input.policy?.enabled && !gatewayTargetsReady(users, targets)) {
               return json(res, 400, { error: 'Select active XPN devices whose routing policy includes 10.77.0.1; split clients need that route in their imported profile' });
             }

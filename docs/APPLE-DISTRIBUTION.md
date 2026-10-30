@@ -56,3 +56,31 @@ For public App Store/external TestFlight review, complete app privacy and age/co
 - No server changes, C rebuild, Git commit/push, or changes to Alta Networks' existing app were performed for distribution preparation.
 
 Sources: [Apple TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/), [export compliance for beta builds](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds/), [App Review guidelines, including VPN apps](https://developer.apple.com/app-store/review/guidelines/), [required-reason API guidance](https://developer.apple.com/documentation/technotes/tn3183-adding-required-reason-api-entries-to-your-privacy-manifest).
+
+## October 29 icon diagnosis
+
+The running Mac app was still the October 25 Debug build under
+`build/xcode-macos/Build/Products/Debug/XPN-macOS.app`. Its Info.plist had no
+icon keys and its bundle had neither Assets.car nor AppIcon.icns. The shared
+source catalog already contains the same artwork for both platforms.
+
+Prepared a signed replacement at
+`build/xcode-macos-icons/Build/Products/Debug/XPN-macOS.app`, linking the
+existing native XCFramework (no C source compilation). The build succeeded;
+deep/strict signature verification passed with system trust access. The bundle
+contains AppIcon.icns, Assets.car and CFBundleIconName=AppIcon. Log:
+`build/apple-macos-icons-build.log`. The running app/VPN was not stopped or
+replaced; quit the old app and launch this replacement to use the new icon.
+
+Read-only App Store Connect inspection confirmed build 4 is Testing and marked
+Internal. Its lock/X icon renders correctly in the Add Build selector, but its
+selection radio button is disabled. App Store version 1.0.0 remains Prepare for
+Submission with no attached build, and the app header shows a placeholder.
+The icon is present in the uploaded binary; the draft listing is separate from
+the internal TestFlight build. A new standard App Store Connect upload (the
+release helper's --external option) is needed to obtain an eligible build for
+that version. Uploading/attaching it alone does not submit it for review or
+publish the app. No new iOS upload or listing change was made during diagnosis.
+
+Apple references: [app icons](https://developer.apple.com/help/app-store-connect/manage-app-information/add-an-app-icon),
+[internal-only build restrictions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers).

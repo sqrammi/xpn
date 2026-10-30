@@ -40,7 +40,7 @@ no routes/firewall rules were changed, and no XPN/nginx service was restarted.
 Authoritative host audit: `/var/backups/xpn-wireguard-20261029/changes.txt`.
 The key has mode 0600; the directory is root:root mode 0700.
 
-## Pending
+## Original checklist (completed below)
 
 - Securely enter the existing Route10 PSK into `/etc/wireguard/route10.psk` with
   root ownership and mode 0600.
@@ -83,3 +83,34 @@ UDP 51820 from all IPv4/IPv6 and permits outbound UDP. Those existing cloud rule
 were inspected but not changed. XPN-device forwarding still requires its gateway
 policy and a connected destination device; Alta could not ping Draper700
 `10.77.0.5` before the 0.1.2 deployment.
+
+## Final XPN policy
+
+Server 0.1.2 is deployed. Its global policy allows home source `172.9.0.0/16`
+through `wg0` to all current/future XPN client addresses for ping and TCP ports
+22 and 5201, with stateful replies and source NAT to `10.77.0.1`. New connections
+from XPN toward home remain blocked. This policy is saved only on Alta, never
+in device configurations; subsequent changes apply immediately without a
+client reconnect. See [release/deployment record](PPA-RELEASE-0.1.2-2026-10-29.md)
+for the exact package, host changes and backups. Reachability of a connected
+production destination client remains to be confirmed; the live Route10-to-server
+tunnel and isolated client forwarding tests passed.
+
+## Follow-up: masquerade, DNS and offline Draper700
+
+The user's Route10 masquerade setting changed the incoming source to
+`192.168.98.2`, which did not match the allowed home source `172.9.0.0/16`.
+The user disabled it in Manage. LAN-to-iPhone (`10.77.0.4`) ping then passed
+from both the Mac and Draper700, and the user confirmed LAN-to-Draper700
+(`10.77.0.5`) ping after reconnecting.
+
+Draper700 is `172.9.0.95` (SSH login `draper`); the alias `draper7` actually reaches
+Draper600. Initial inspection found client package 0.1.0 but no XPN process,
+service or interface. Its connection attempt used the incorrect DNS address
+`172.9.0.108`. Route10 returned that address while public DNS returned
+`138.68.255.92`. The user corrected the DNS override. A non-cached resolvectl
+query then returned the public address, and HTTPS returned 200. No profile
+secret or device identity was changed.
+
+A later server/client update adds the separate global client-ping switch; see
+[peer-ping deployment](PEER-PING-2026-10-29.md).

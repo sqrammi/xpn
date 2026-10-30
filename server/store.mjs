@@ -26,7 +26,7 @@ export function transportSettings(input = {}) {
 export function policy(input, defaults = {}) {
   const mode = input.mode ?? 'psk';
   if (!['hybrid', 'psk'].includes(mode)) throw new Error('Invalid crypto mode');
-  const fullTunnel = input.fullTunnel ?? true;
+  const fullTunnel = input.fullTunnel ?? !(Array.isArray(input.routes) && input.routes.length);
   if (typeof fullTunnel !== 'boolean') throw new Error('Invalid fullTunnel');
   const routes = input.routes ?? [];
   if (!Array.isArray(routes) || routes.length > 32 || routes.some(route => {
@@ -34,6 +34,7 @@ export function policy(input, defaults = {}) {
     const [ip, bits, extra] = route.split('/');
     return extra !== undefined || isIP(ip) !== 4 || !/^\d+$/.test(bits ?? '') || +bits > 32;
   })) throw new Error('Routes must be IPv4 CIDRs');
+  if (fullTunnel && routes.length) throw new Error('Invalid routing: select subnet-only routing when specifying subnets');
   if (!fullTunnel && !routes.length) throw new Error('Split tunnel needs at least one subnet');
   if (!fullTunnel && routes.some(r => Number(r.split('/')[1]) === 0)) throw new Error('Use full tunnel for a default route');
   const dns = input.dns ?? ['1.1.1.1'];

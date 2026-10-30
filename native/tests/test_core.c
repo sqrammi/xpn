@@ -47,7 +47,14 @@ int main(void) {
     packet[15]=2; packet[16]=10; packet[17]=77; packet[18]=0; packet[19]=1;
     assert(packet_allowed(&full,packet,20)); /* gateway is filtered by host firewall */
     assert(!packet_allowed(&p,packet,20)); /* split profile must explicitly authorize route */
-    packet[19]=3; assert(!packet_allowed(&full,packet,20)); /* other clients remain private */
+    packet[19]=3; assert(!packet_allowed(&full,packet,20)); /* non-ICMP peer traffic remains private */
+    unsigned char echo[28] = {0x45,0,0,28,0,0,0,0,64,1,0,0,10,77,0,2,10,77,0,3,8,0,0,0,0,0,0,0};
+    assert(packet_allowed(&full,echo,sizeof(echo))); /* live server firewall decides */
+    echo[20]=0; assert(packet_allowed(&full,echo,sizeof(echo))); /* reply */
+    assert(!packet_allowed(&p,echo,sizeof(echo))); /* split route still required */
+    echo[20]=3; assert(!packet_allowed(&full,echo,sizeof(echo)));
+    echo[20]=8; echo[19]=255; assert(!packet_allowed(&full,echo,sizeof(echo)));
+    echo[19]=3; echo[15]=4; assert(!packet_allowed(&full,echo,sizeof(echo))); /* spoofing */
     packet[16]=169; packet[17]=254; packet[18]=169; packet[19]=254;
     assert(!packet_allowed(&full,packet,20));
     packet[16]=10; packet[17]=20; packet[18]=0; packet[19]=1;

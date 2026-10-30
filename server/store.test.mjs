@@ -70,7 +70,8 @@ test('expiry, replacing an invitation, and revocation fail closed', () => {
   } finally { store.close(); }
 });
 test('routing and crypto policies reject malformed or ambiguous settings', () => {
-  for (const value of [{ mode: 'classical' }, { fullTunnel: 'false' }, { fullTunnel: false }, { routes: ['::/0'] }, { routes: ['1.2.3.4/33'] }, { routes: ['1.2.3.4/-1'] }, { routes: ['1.2.3.4/'] }, { dns: ['bad'] }, { fullTunnel: false, routes: ['0.0.0.0/0'] }, { fullTunnel: false, routes: ['0.0.0.0/00'] }]) assert.throws(() => policy(value));
+  for (const value of [{ fullTunnel: true, routes: ['10.77.0.0/24'] }, { mode: 'classical' }, { fullTunnel: 'false' }, { fullTunnel: false }, { routes: ['::/0'] }, { routes: ['1.2.3.4/33'] }, { routes: ['1.2.3.4/-1'] }, { routes: ['1.2.3.4/'] }, { dns: ['bad'] }, { fullTunnel: false, routes: ['0.0.0.0/0'] }, { fullTunnel: false, routes: ['0.0.0.0/00'] }]) assert.throws(() => policy(value));
+  assert.equal(policy({ routes: ['10.77.0.0/24'] }).fullTunnel, false);
   assert.equal(policy({ fullTunnel: false, routes: ['10.0.0.0/8'], mode: 'hybrid' }).mode, 'hybrid');
 });
 test('key rotation changes the PSK and invalidates previous invitations', () => {

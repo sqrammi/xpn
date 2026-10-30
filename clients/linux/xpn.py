@@ -168,14 +168,17 @@ def connect_once(args, profile, state):
                 # Once authenticated, keep ordinary IPv4 and DNS from bypassing the
                 # tunnel even when the native socket fails before cleanup runs.
                 endpoints = ', '.join(ips)
-                rules = f'''table inet {table} {{ chain output {{
+                rules = f'''table inet {table} {{
+                  chain output {{
                     type filter hook output priority -10; policy accept;
                     oifname "lo" accept
                     meta nfproto ipv6 reject
                     oifname "{interface}" accept
                     ip daddr {{ {endpoints} }} tcp dport {endpoint.port or 443} accept
                     reject
-                }} }}'''
+                  }}
+                }}
+'''
                 run('nft', '-f', '-', input=rules)
                 undo('nft', 'delete', 'table', 'inet', table)
             routes = ['0.0.0.0/1', '128.0.0.0/1'] if full else profile['routes']

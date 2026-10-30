@@ -2,42 +2,122 @@
 
 Date: 2026-10-25. Hosts: Apple Silicon macOS development machine and alta.jeffhansen.com (Ubuntu 26.04.1 Resolute, x86-64).
 
-## October 29: live home-to-XPN gateway policy
+## October 30: split routing and general incoming traffic
 
-Implemented a disabled-by-default web panel, authenticated admin endpoint and
-restricted root broker for WireGuard-to-XPN forwarding. See [gateway setup and
-policy behavior](GATEWAY.md). This change is not in the uploaded 0.1.1 packages
-and has not been deployed on Alta or Draper.
+Confirmed Draper600's server and imported client profiles both contained
+`fullTunnel: true` alongside `routes: ["10.77.0.0/24"]`. Full mode takes
+precedence. Corrected only its server policy to split mode and invalidated old
+invitations, preserving device keys/trust. SQLite backup and exact report on
+Alta: `/var/backups/xpn-draper600-routing-20261030T142514Z/changes.md`.
+The user ran `/home/draper/fix-xpn-routing.py` with sudo. Verified the client
+service is active and enabled, its original profile now has `fullTunnel: false`
+and only `10.77.0.0/24`, and live routes match: `10.77.0.1` uses `xpn59712`
+with source `10.77.0.6`, while `1.1.1.1` uses the original LAN gateway
+`192.168.108.1` on `enp1s0`. No VPN default or /1 routes remain. Pings between
+Alta and Draper600 passed 3/3 in each direction (~23 ms). Client backups/report:
+`/var/backups/xpn-routing-20261030T143726Z/`. No re-enrollment was needed.
 
-Local verification: 13 Node tests passed, and 60 Python tests completed with
-59 passed and one Linux-only test skipped. Coverage includes admin authentication
-and origin checks, selected-device routing prerequisites, stale revisions,
-malformed policies, atomic nft transaction construction, persistence, rollback
-after a failed save, socket peer UID checks, bounded requests and WireGuard
-interface validation. JavaScript and shell syntax checks and `git diff --check`
-passed. No C code was built locally.
+Creation UI now defaults to selected subnets; the subnet field is disabled and grayed out
+in full mode, then enabled/required in split mode. Switching back retains entered
+subnets; full-mode submissions always send an empty routes list. Browser checks
+confirmed disabling, re-enabling/editing, value retention and successful full-mode
+submission with retained text excluded. The API infers split mode
+when routes are supplied without a routing switch and rejects contradictory
+explicit full-mode/subnet input. Browser preview confirmed the behavior.
 
-A disposable localhost preview verified the panel's enable/save and disable/save
-flows with an in-memory policy broker. The screenshot is
-`build/gateway-preview.png`; this preview did not change any actual firewall.
+Renamed home forwarding to incoming traffic. Added `filterMode: firewall` to
+allow all incoming sources/services to the client pool while respecting external
+iptables/nftables chains. Restricted mode retains the existing WireGuard/source/
+port controls; old persisted policies normalize to restricted mode. The new
+mode requires no WireGuard interface and is disabled by default. Changes stay
+server-wide and preserve independent peer-ping policy. No live global firewall
+policy was broadened.
 
-Remote test workspace: `seven-root:/root/xpn-gateway-tests-20261029`, with its
-snapshot archive at `/root/xpn-gateway-tests-20261029.tar.gz`. Tests use an existing
-0.1.1 native binary and disposable mount/network namespaces, not the host's live
-routes/firewall. The workspace directory was made traversable (`0755`) for the
-test account through the private bind mount; `/root` permissions were unchanged.
-Logs are in `gateway-tun.log`. No production services were installed or restarted.
+Both Noble and Resolute passed 63 Python tests, 13 Node tests and real-TUN tests
+for full client setup, peer ping, reconnect, scoped forwarding, general incoming
+access, independent firewall drops, reverse-initiation isolation and live disable.
+The general mode also preserved outbound VPN reply traffic while disabled.
+Existing native binaries were reused, with no local C build. UI tested against
+an in-memory local preview. Evidence and screenshot:
+`build/routing-incoming-20261030/`. These source changes are not yet packaged
+or installed on Alta; its production change is only the Draper600 route correction.
 
-The initial real-TUN run passed existing split/full routing, non-root server
-threads and pinned custom-SNI WSS checks. The new gateway test reached the XPN
-device with source NAT `10.77.0.1`, but its HTTP fixture returned 404 because it
-served the wrong directory. The fixture was corrected and the test strengthened
-to check a listening disallowed port and an established connection across policy
-disable. The corrected end-to-end run and the new broker's actual systemd sandbox
-remain pending authorization to transfer the updated files to seven-root.
-Automatic approval review rejected that transfer; no workaround was attempted.
-The test models decrypted WireGuard traffic with a veth, separately checking an
-actual kernel WireGuard interface type. A real Route10 tunnel has not been tested.
+## October 30: Linux full-tunnel nftables syntax correction
+
+A user reported successful authentication followed by nft's `unexpected '}'`
+error on xpn-client 0.1.3. Reproduced the exact error on Resolute by extending
+the real-TUN harness to run the Python client with a full-tunnel profile. The
+prior full-tunnel test drove only the native client; the Python launcher test
+used a split profile, leaving its nftables setup untested.
+
+Separated the generated table/chain closing braces with newlines in
+`clients/linux/xpn.py`. The added full-launcher regression now passes on Noble
+and Resolute: real nftables installation, tunneled payload transfer, server ping,
+and firewall/interface/route cleanup on stop. Only systemd-resolved calls are
+stubbed to avoid modifying host DNS from the isolated network namespace.
+Existing reconnect tests pass on both; peer/gateway tests also pass on Resolute.
+All 18 Python client unit tests pass. Existing native binaries were reused;
+no C build or production host modification was performed.
+
+Evidence: `build/full-tunnel-fix-20261030/` (before/error, Noble and Resolute
+passing logs). The correction is in the working tree, not in the already
+published 0.1.3 packages. No device re-enrollment is needed for this fix.
+
+## October 29: 0.1.3 release validation
+
+Both Noble and Resolute 0.1.3 packages passed five native CTests, 62 Python tests,
+13 Node tests, source/binary lintian and installed-service smoke tests. Real-TUN
+integration verified peer ping default denial, live enable in both directions,
+and live disable without reconnecting, plus existing gateway/reconnect tests.
+TLS-only, standby failover and wrong-pin checks passed; Resolute also passed
+hybrid ML-KEM. Source and artifact hashes were verified before staging for
+signing on ren. No production hosts were modified and no local C build was run.
+Both sources are signed, signature/hash verified and uploaded. Launchpad accepted
+both and built them successfully (33886570/33886571). At October 30, 05:07 UTC,
+both versions are Published; signed APT indexes and the hashes/sizes of all four
+client/server debs were verified. See
+[0.1.3 release record](PPA-RELEASE-0.1.3-2026-10-29.md).
+
+## October 29: client-to-client ping follow-up
+
+The follow-up native and server policy changes passed all five CTests, 62 Python
+tests, 13 Node tests and the two-real-client/default-deny/live-opt-in/live-disable
+TUN test on Resolute. Existing gateway and reconnect tests also passed. Deployed
+the validated local server package on Alta and enabled its global client-ping
+switch, verifying unchanged device records/environment. See
+[connectivity diagnosis and exact deployment changes](PEER-PING-2026-10-29.md).
+This later change is not in the initial 0.1.2 PPA upload.
+
+## October 29: 0.1.2 gateway release and deployment
+
+The final server-wide all-devices gateway policy was validated and deployed on
+Alta. It changes only server firewall/persistence state; device records and the
+environment file were verified unchanged. All four XPN services and WireGuard
+are active. Home-to-server pings through the actual Route10 tunnel passed.
+A production destination client has not yet been verified reachable.
+
+Both Noble (`little-guy-root`) and Resolute (`seven-root`) release jobs reached
+VALIDATED: five native CTests, all 61 Python tests, 13 Node tests, syntax checks,
+binary lintian, split/full real-TUN transfers, selected/all-device gateway policy
+allow/deny transitions including existing connection shutdown, client outage
+recovery, outer-only transport, standby failover, wrong pins and revocation.
+The installed client service and gateway broker passed their actual systemd
+restrictions in disposable network namespaces. Resolute also passed hybrid
+ML-KEM. Test services were cleaned up; no C was built locally.
+
+The earlier fixture failures and approval block were superseded by the user's
+explicit build/deploy request and successful final remote validation. The gateway
+packet fixture models decrypted WireGuard traffic with veth; the separate live
+Route10 tunnel check validates the real WireGuard leg. Local tests passed with
+one Linux-only skip. The all-devices panel was inspected in a disposable browser
+preview; screenshot: `build/ppa-release-0.1.2-20261029/all-devices-preview.png`.
+
+Final signed source sets were verified and uploaded successfully. Both Launchpad
+builds succeeded. At 2026-10-30 01:08 UTC, both signed APT indexes offered
+0.1.2 client/server packages for amd64. Verified archive signatures, index hashes
+and all four downloaded package hashes/sizes; publication is complete. See the
+[release and host-change record](PPA-RELEASE-0.1.2-2026-10-29.md) and
+[WireGuard record](WIREGUARD-ALTA-2026-10-29.md) for artifacts, backups and scope.
 
 ## October 29: 0.1.1 PPA rebuild validation
 

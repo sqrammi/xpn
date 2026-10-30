@@ -2,4 +2,7 @@
 
 details summary{cursor:pointer;font-size:13px;font-weight:600}details label{margin-top:16px}dialog{max-width:620px;width:calc(100% - 36px);border:1px solid #cbd6cb;border-radius:16px;padding:28px;color:#193b35}dialog::backdrop{background:#193b3570}.dialog-actions{display:flex;justify-content:flex-end;gap:12px}#transport-error{color:#904c37;margin:0}
 
-#gateway-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px}.check-label{display:flex;align-items:center;gap:10px}.check-label input{width:auto}#gateway-fields .columns{align-items:center}#gateway-state{font-weight:600}
+#gateway-fields,#gateway-restrictions{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px}.check-label{display:flex;align-items:center;gap:10px}.check-label input{width:auto}#gateway-fields .columns{align-items:center}#gateway-state{font-weight:600}
+
+#create-form input[name=routes]:disabled{background:#e8ebe7;color:#879087;border-color:#d7dcd5;cursor:not-allowed;opacity:1}
+#create-form label:has(input[name=routes]:disabled){color:#879087}

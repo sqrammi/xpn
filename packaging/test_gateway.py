@@ -19,6 +19,39 @@ def enabled():
 
 
 class GatewayTests(unittest.TestCase):
+    def test_client_ping_independent_opt_in_and_strict_pool_scope(self):
+        self.assertFalse(gw.policy(enabled())['allowClientPing'])
+        p = {**gw.DEFAULT, 'allowClientPing': True}
+        rules = gw.rules(p)
+        self.assertIn('iifname "xpn0" oifname "xpn0" ip saddr 10.77.0.2-10.77.0.254 ip daddr 10.77.0.2-10.77.0.254 icmp type echo-request', rules)
+        self.assertIn('icmp type echo-reply ct state established accept', rules)
+        self.assertNotIn('snat ip to', rules)
+        self.assertNotIn('tcp', rules)
+        self.assertNotIn('wg0', rules)
+        with self.assertRaises(gw.PolicyError): gw.policy({**p, 'allowClientPing': 'yes'})
+
+    def test_firewall_mode_uses_all_sources_services_without_wireguard(self):
+        p = {**gw.DEFAULT, 'enabled': True}
+        clean = gw.policy(p)
+        self.assertTrue(clean['allDevices'])
+        text = gw.rules(p)
+        self.assertIn('ct direction original ct state new,established,related accept', text)
+        self.assertIn('ct direction reply ct status snat ct state established,related accept', text)
+        self.assertIn('snat ip to 10.77.0.1', text)
+        self.assertNotIn('wg0', text)
+        self.assertNotIn('dport', text)
+        self.assertNotIn('flush ruleset', text)
+        self.assertEqual(gw.policy(enabled())['filterMode'], 'restricted')
+        with tempfile.TemporaryDirectory() as d:
+            service = gw.Gateway(Path(d)/'policy.json', lambda _: None,
+                                 lambda _: self.fail('Firewall mode must not require WireGuard'))
+            service.request(dict(action='set', revision=0, policy=p))
+        disabled = gw.rules({**p, 'enabled': False})
+        self.assertNotIn(' accept', disabled)
+        self.assertIn('ct direction original drop', disabled)
+        self.assertIn('ct direction reply ct status snat drop', disabled)
+        with self.assertRaises(gw.PolicyError): gw.policy({**p, 'filterMode': 'anything'})
+
     def test_all_devices_is_opt_in_covers_only_client_pool_and_accepts_legacy_policy(self):
         self.assertFalse(gw.policy(enabled())['allDevices'])
         p = {**enabled(), 'allDevices': True, 'targets': []}

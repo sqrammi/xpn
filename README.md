@@ -69,7 +69,7 @@ The installer builds in place, generates independent admin/database secrets, cre
 
 Open `https://your-host/xpn/`, unlock using your admin token, create one identity per physical device, and scan its QR. **Email QR** sends only when explicitly selected in the UI; no live email has been sent during implementation. **New QR** replaces the invitation; **Rotate key** replaces the credential and disconnects old sessions; **Revoke** disables the identity.
 
-The console also provides optional [home-to-XPN gateway access](docs/GATEWAY.md) through an existing WireGuard tunnel. Select allowed home subnets, destination devices and ports, then apply immediately without restarting VPN connections. It is disabled by default and persists across reboot. This feature requires server version 0.1.2 or newer.
+The console also provides optional [incoming traffic access](docs/GATEWAY.md) through an existing WireGuard tunnel. Select allowed home subnets, destination devices and ports, then apply immediately without restarting VPN connections. It is disabled by default and persists across reboot. This feature requires server version 0.1.2 or newer.
 
 ## Linux client
 

@@ -1,37 +1,65 @@
-# Home network access to XPN devices
+# Incoming traffic to XPN devices
 
-The server console can allow selected traffic from an existing WireGuard link into selected XPN devices. The policy is disabled by default. **Save & apply now** replaces the gateway firewall rules immediately and saves the policy for reboot, without restarting XPN or disconnecting its clients.
+**Allow incoming traffic to XPN devices** is a server-wide switch. It is stored
+only on the server, never in device profiles. **Save & apply now** changes the
+policy live and persists it for reboot, without reconnecting VPN clients.
+Incoming traffic is disabled by default.
 
-This feature requires server version 0.1.2 or newer; it is not included in 0.1.1. Install an updated server release and rerun `xpn-server-setup` with your existing installation options, or run the updated checkout installer. That initial upgrade installs a service and new firewall chains and can restart the VPN. Subsequent web policy changes do not restart it.
+The general firewall mode and new labels are working-tree changes after 0.1.3;
+they are not in that published package. The earlier scoped WireGuard mode was
+introduced in 0.1.2. Existing saved policies are interpreted as restricted mode
+on upgrade, preserving their existing access instead of silently broadening it.
 
-## Before enabling
+## Filtering modes
 
-- Configure the Route10-to-server WireGuard tunnel separately. Use a dedicated interface such as `wg0`, not the server's default outbound interface. XPN does not create WireGuard keys, peers or routes.
-- On Route10, route the selected XPN addresses (or `10.77.0.0/24`) through the server peer and allow the intended LAN traffic. On the remote server, the home WireGuard peer's `AllowedIPs` and routing must cover the home source subnets. Do not overlap them with the XPN subnet.
-- Each selected XPN device must already route `10.77.0.1` through XPN. Full-tunnel profiles do this. For split profiles, include `10.77.0.1/32` when enrolling/importing the profile. A server firewall update cannot add routes to a client's installed profile. The web API checks the server's saved device policy, but cannot verify the profile currently imported on a client.
-- The service on the destination device must listen on its XPN address (or all appropriate interfaces), and the device firewall must allow its port from `10.77.0.1`.
-- Other server firewall chains, cloud security rules and Route10 rules still apply. An accept in XPN's table cannot override a drop in another nftables base chain.
+- **Use server firewall · all sources and services:** allow routed incoming
+  IPv4 traffic from any non-XPN interface to all XPN client addresses `.2` through
+  `.254`, including future enrollments. No source subnet, WireGuard interface,
+  protocol or port list is required. Your independent iptables/nftables rules
+  decide what traffic may pass. An XPN accept does not override a drop in another
+  base chain. Rules must filter forwarded traffic, not only server INPUT traffic.
+- **Also restrict by WireGuard interface, sources and services:** retain the
+  earlier optional restrictions. Choose a dedicated existing WireGuard interface,
+  allowed source CIDRs, all devices or selected addresses, TCP/UDP ports and ping.
+  The interface must not carry the server's default route. XPN does not create
+  WireGuard keys, peers or routes.
 
-## Web console
+The switch controls incoming connections. It does not authorize clients to
+initiate new connections through non-WAN interfaces. Replies to permitted incoming
+connections are stateful. Client-to-client ping remains separately controlled;
+other peer protocols remain blocked. Server-host service access is also separate
+and uses `--host-tcp-ports`.
 
-Sign in with the existing admin token and open **Home network access to XPN devices**:
+## Routing and replies
 
-1. Select **Enable home-to-XPN forwarding**.
-2. Enter the existing WireGuard interface, for example `wg0`.
-3. Enter the allowed home source CIDRs, for example `172.9.0.0/16`.
-4. Select **All XPN devices, including future enrollments**, or enter individual destination XPN addresses such as `10.77.0.2, 10.77.0.3`. Individual selections must be active enrolled devices. All-devices mode covers the client pool `.2` through `.254`; new devices are included automatically but still need the gateway reply route in their profile. Revoked identities cannot connect to XPN.
-5. Select the TCP/UDP destination ports and whether ping is allowed. For SSH and HTTPS, use TCP `22,443`.
-6. Click **Save & apply now**. Success shows that the policy is applied and saved. A stale-edit error requires **Refresh policy** before saving again.
+Traffic must already be routed to the server and its XPN subnet. In a Route10
+S2S setup, route `10.77.0.0/24` to the server peer and configure the server peer's
+AllowedIPs/return routes for the original sources. The incoming interface can
+be WireGuard, another tunnel or another routed interface in server-firewall mode.
 
-To close access, clear the enable checkbox and save. Subsequent forwarded packets, including packets on existing connections, are blocked. The VPN tunnels remain connected. The saved addresses/ports remain available for re-enabling.
+XPN source-NATs forwarded incoming traffic to `10.77.0.1`, so replies traverse
+the client's tunnel. Client profiles must include `10.77.0.1/32` or a covering
+route such as `10.77.0.0/24`, or use full-tunnel mode. Destination services and
+client host firewalls must allow the intended traffic from `10.77.0.1`.
+Independent server FORWARD rules see the original source before this SNAT.
 
-## Traffic behavior
+A profile with `fullTunnel: true` routes all IPv4 traffic, regardless of entries
+in `routes`. For subnet-only access, use `fullTunnel: false` and the selected
+routes. The updated creation form defaults to selected subnets; the subnet field is disabled and grayed out in full mode, and enabled/required
+in selected-subnets mode. Switching back preserves the previously entered subnets. The API rejects contradictory full-tunnel-plus-subnets
+input. Already-imported profiles require an explicit client-side update;
+a server-side firewall or policy change cannot rewrite them.
 
-Allowed traffic follows `home LAN → WireGuard → server → xpn0 → selected device`. The server source-NATs it to `10.77.0.1`, so the client returns traffic through its existing gateway route. The client sees the XPN server as the source, rather than the original home IP.
+Keep Route10 masquerading off if server firewall rules need to match the original
+LAN sources. With external filtering, a source-subnet list inside XPN is optional.
 
-Only selected source CIDRs, destination addresses, protocols and ports are allowed. Return traffic is stateful. XPN devices cannot initiate connections toward home through the configured gateway interface. Client-to-client isolation and restrictions on services hosted by the server remain separate; `--host-tcp-ports` controls the server itself, not forwarding to devices. This feature supports IPv4.
+## Applying and disabling
 
-Changing an interface/address or NAT policy may interrupt affected application connections. It does not flush conntrack, so after changing NAT-related settings an application might need to open a new connection. Unrelated VPN sessions continue running.
+Select the incoming checkbox, choose a filtering mode, then **Save & apply now**.
+A stale-edit error requires **Refresh policy**. Disabling blocks incoming sessions
+immediately while preserving outbound VPN connections and their replies. Changing
+NAT-related settings can require applications to reconnect; conntrack is not
+flushed. Other firewall tables and cloud firewall rules remain in effect.
 
 ## Privileges, persistence and troubleshooting
 
@@ -51,4 +79,25 @@ sudo nft list chain inet xpn gateway_nat
 ip -4 route get 172.9.0.2
 ```
 
-An unavailable helper produces an explicit console error; it does not silently claim the policy was saved. The console reports the broker's last applied policy; external manual firewall edits are not monitored. An existing interface of the wrong type, or a WireGuard interface used by the main default route, is rejected when enabling/saving. Keep it dedicated after enabling as well.
+An unavailable helper produces an explicit console error; it does not silently claim the policy was saved. The console reports the broker's last applied policy; external manual firewall edits are not monitored. In restricted mode, a non-WireGuard interface or a WireGuard interface carrying the server default route is rejected. Server-firewall mode does not require WireGuard.
+
+## Client-to-client ping
+
+**Allow XPN clients to ping each other** is a separate, server-wide switch. It
+allows ICMP echo requests and stateful replies between client addresses `.2`
+through `.254`, without enabling other client-to-client protocols. It works
+independently of the incoming-traffic switch and applies live without reconnecting.
+No device profile setting is added. Clients still need a full-tunnel route or a
+split route covering the peer address, usually `10.77.0.0/24`.
+
+Both server and clients need the native peer-ping update: earlier binaries reject
+peer-destined packets before they reach the server firewall, including replies.
+The initial `0.1.2-0ubuntu1~SERIES1` PPA release does not contain this later change.
+The first local Resolute validation/deployment package is
+`0.1.2-0ubuntu1~resolute1+peerping1`.
+
+Keep Route10 S2S masquerading off when the allowed sources are home subnets.
+Otherwise its source becomes the Route10 tunnel IP and will not match those
+subnets. Alta already source-NATs permitted home traffic to `10.77.0.1` for client
+replies, while retaining the home route on WireGuard. Pinging the server itself
+is governed by host input rules, independently of device forwarding.

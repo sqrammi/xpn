@@ -167,7 +167,76 @@ while True:
             ns(client_ns, 'ip', 'route', 'del', route, 'dev', 'testvpn')
             if mode == 'split': ns(client_ns, 'ip', 'route', 'del', '10.77.0.1/32', 'dev', 'testvpn')
             ns(client_ns, 'ip', 'addr', 'del', f'10.77.0.{index}/32', 'dev', 'testvpn')
+        if os.environ.get('XPN_TEST_PEERS') == '1':
+            # Two real native clients: prove default isolation, live ping opt-in,
+            # bidirectional replies and immediate disable without reconnecting.
+            second = namespace('second-client')
+            run('ip', 'link', 'add', 'peer-uplink', 'type', 'veth', 'peer', 'name', 'peer0')
+            run('ip', 'link', 'set', 'peer0', 'netns', second.pid)
+            run('ip', 'addr', 'add', '198.18.1.1/24', 'dev', 'peer-uplink')
+            run('ip', 'link', 'set', 'peer-uplink', 'up')
+            ns(second, 'ip', 'addr', 'add', '198.18.1.2/24', 'dev', 'peer0')
+            ns(second, 'ip', 'link', 'set', 'peer0', 'up')
+            ns(second, 'ip', 'route', 'add', '198.18.0.1/32', 'via', '198.18.1.1')
+            ns(second, 'ip', 'tuntap', 'add', 'dev', 'testvpn', 'mode', 'tun')
+            ns(second, 'ip', 'link', 'set', 'testvpn', 'mtu', '1400', 'up')
+            peers = []
+            for proc, address, mode in [(client_ns, '10.77.0.2', 'split'), (second, '10.77.0.3', 'full')]:
+                ns(proc, 'ip', 'addr', 'add', address+'/32', 'dev', 'testvpn')
+                ns(proc, 'ip', 'route', 'add', '10.77.0.0/24', 'dev', 'testvpn')
+                name = 'peer-' + mode
+                child = start(['nsenter', '-t', proc.pid, '-n', '--', binary, 'client', control / f'{mode}.json', 'testvpn'], name)
+                peers.append(child)
+                wait_for(lambda name=name: 'CONNECTED' in (directory / f'{name}.log').read_text(), name, child)
+            spec = importlib.util.spec_from_file_location('gateway', ROOT / 'deploy/gateway.py')
+            gateway = importlib.util.module_from_spec(spec); spec.loader.exec_module(gateway)
+            manager = gateway.Gateway(directory / 'peer-policy.json')
+            def peer_ping(proc, address):
+                return ns(proc, 'python3', '-c', ping.replace('10.77.0.1', address), check=False, stderr=sp.DEVNULL).returncode
+            assert peer_ping(client_ns, '10.77.0.3') != 0, 'Peer ping allowed by default'
+            manager.request(dict(action='set', revision=0, policy={**gateway.DEFAULT, 'allowClientPing': True}))
+            assert peer_ping(client_ns, '10.77.0.3') == 0, 'First peer cannot ping second'
+            assert peer_ping(second, '10.77.0.2') == 0, 'Second peer cannot ping first'
+            manager.request(dict(action='set', revision=1, policy=gateway.DEFAULT))
+            assert peer_ping(client_ns, '10.77.0.3') != 0, 'Peer ping remains enabled after disable'
+            assert all(p.poll() is None for p in peers), 'Policy change disconnected a client'
+            for child in peers:
+                child.terminate(); child.wait(timeout=5)
+            ns(client_ns, 'ip', 'route', 'del', '10.77.0.0/24', 'dev', 'testvpn')
+            ns(client_ns, 'ip', 'addr', 'del', '10.77.0.2/32', 'dev', 'testvpn')
+            print('PASS: two real clients, default isolation, bidirectional ping, live disable, no reconnect', flush=True)
         if os.environ.get('XPN_TEST_CLIENT_SERVICE') == '1':
+            # Exercise the Python full-tunnel setup, not just the native transport.
+            # Stub only resolved: its host D-Bus service is outside these namespaces.
+            tools = directory / 'tools'
+            tools.mkdir()
+            dns_log = directory / 'resolved-calls'
+            resolver = tools / 'resolvectl'
+            resolver.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + str(dns_log) + '\n')
+            resolver.chmod(0o755)
+            full_service = start(['nsenter', '-t', client_ns.pid, '-n', '--',
+                                  'env', 'PATH=' + str(tools) + ':' + os.environ['PATH'],
+                                  'python3', ROOT / 'clients/linux/xpn.py', 'connect', control / 'full.json',
+                                  '--native', binary, '--no-retry'], 'full-client-launcher')
+            full_log = directory / 'full-client-launcher.log'
+            wait_for(lambda: 'Connected. Ctrl-C disconnects' in full_log.read_text(),
+                     'full client launcher', full_service)
+            nft_rules = ns(client_ns, 'nft', 'list', 'ruleset', capture_output=True).stdout
+            # nft can render the family match as an implicit ICMPv6 reject.
+            assert ('meta nfproto ipv6 reject' in nft_rules or 'reject with icmpv6' in nft_rules), 'IPv6 leak guard missing'
+            ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '5',
+               '-o', output, 'http://192.0.2.2:8080/payload')
+            assert output.read_bytes() == payload.read_bytes(), 'Full launcher payload mismatch'
+            ns(client_ns, 'python3', '-c', ping)
+            full_service.terminate(); full_service.wait(timeout=10)
+            assert full_service.returncode == 0, 'Full client did not stop cleanly'
+            assert 'xpn_' not in ns(client_ns, 'nft', 'list', 'tables', capture_output=True).stdout
+            assert ': xpn' not in ns(client_ns, 'ip', '-o', 'link', 'show', capture_output=True).stdout
+            routes_after = ns(client_ns, 'ip', 'route', 'show', capture_output=True).stdout
+            assert '128.0.0.0/1' not in routes_after and '0.0.0.0/1' not in routes_after
+            calls = dns_log.read_text().splitlines()
+            assert any(line.startswith('dns ') for line in calls) and any(line.startswith('revert ') for line in calls)
+            print('PASS: full Python client installed real nft rules, transferred traffic, pinged server and cleaned up', flush=True)
             # Exercise the client directly, without a service helper, against the installed
             # native executable, including total server loss and a fresh session.
             service = start(['nsenter', '-t', client_ns.pid, '-n', '--', 'python3',
@@ -257,6 +326,24 @@ with socket.create_connection((sys.argv[1], 8082), timeout=3) as connection:
                 assert home_get() != 0, 'Disabled gateway still accepted new connections'
                 assert service.poll() is None and log.read_text().count(connected) == 2, 'Policy update restarted the tunnel'
                 print('PASS: live gateway opt-in, scoped ports, SNAT replies, reverse isolation and disable without reconnect', flush=True)
+                # General incoming mode has no source/interface/port allowlist.
+                # Independent firewall chains still enforce their own policy.
+                firewall_policy = {**gateway.DEFAULT, 'enabled': True}
+                manager.request(dict(action='set', revision=3, policy=firewall_policy))
+                assert home_get(8082) == 0 and home_get(8083) == 0, 'General incoming traffic was restricted'
+                run('nft', '-f', '-', input='table inet xpn_external_test {\n chain forward {\n type filter hook forward priority 0; policy accept;\n iifname "gw-test" oifname "xpn0" tcp dport 8083 drop\n }\n}\n')
+                assert home_get(8083) != 0, 'XPN bypassed an external firewall drop'
+                assert home_get(8082) == 0, 'External rule blocked an unrelated port'
+                assert ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '2',
+                          '-o', '/dev/null', 'http://198.19.0.2:8083/payload', check=False).returncode != 0, 'Incoming mode enabled reverse initiation'
+                manager.request(dict(action='set', revision=4, policy={**firewall_policy, 'enabled': False}))
+                assert home_get(8082) != 0, 'Disabled incoming mode accepted traffic'
+                ns(client_ns, 'curl', '--noproxy', '*', '--fail', '--silent', '--max-time', '5',
+                   '-o', output, 'http://192.0.2.2:8080/payload')
+                assert output.read_bytes() == payload.read_bytes(), 'Disabled incoming mode blocked outbound replies'
+                run('nft', 'delete', 'table', 'inet', 'xpn_external_test')
+                assert service.poll() is None and log.read_text().count(connected) == 2
+                print('PASS: general incoming access, external firewall enforcement, reverse isolation and live disable', flush=True)
             service.terminate()
             service.wait(timeout=10)
             assert service.returncode == 0, 'Client did not stop cleanly'

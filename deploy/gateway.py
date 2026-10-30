@@ -14,7 +14,7 @@ import tempfile
 
 STATE = Path('/var/lib/xpn-gateway/policy.json')
 SOCKET = '/run/xpn-gateway/control.sock'
-DEFAULT = dict(enabled=False, interface='wg0', sources=[], targets=[], allDevices=False, tcpPorts=[22], udpPorts=[], allowPing=True)
+DEFAULT = dict(filterMode='firewall', enabled=False, interface='wg0', sources=[], targets=[], allDevices=True, allowClientPing=False, tcpPorts=[22], udpPorts=[], allowPing=True)
 
 
 class PolicyError(Exception):
@@ -22,12 +22,18 @@ class PolicyError(Exception):
 
 
 def policy(value):
+    if isinstance(value, dict) and 'filterMode' not in value:
+        value = {**value, 'filterMode': 'restricted'}  # Preserve existing scoped policies.
     if isinstance(value, dict) and 'allDevices' not in value:
         value = {**value, 'allDevices': False}  # Existing saved policies/API clients.
+    if isinstance(value, dict) and 'allowClientPing' not in value:
+        value = {**value, 'allowClientPing': False}
     if not isinstance(value, dict) or set(value) != set(DEFAULT):
         raise PolicyError('Invalid gateway policy fields')
-    if any(type(value[name]) is not bool for name in ('enabled', 'allowPing', 'allDevices')):
+    if any(type(value[name]) is not bool for name in ('enabled', 'allowPing', 'allDevices', 'allowClientPing')):
         raise PolicyError('Invalid gateway switches')
+    if value['filterMode'] not in ('restricted', 'firewall'):
+        raise PolicyError('Invalid incoming traffic filter mode')
     iface = value['interface']
     if not isinstance(iface, str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', iface) or iface in ('lo', 'xpn0'):
         raise PolicyError('Invalid WireGuard interface')
@@ -57,14 +63,36 @@ def policy(value):
                 raise PolicyError('Invalid gateway ' + name) from None
         result[name] = sorted(set(clean))
     if result['allDevices']: result['targets'] = []
-    if value['enabled'] and (not result['sources'] or not (result['targets'] or result['allDevices']) or not (result['tcpPorts'] or result['udpPorts'] or result['allowPing'])):
-        raise PolicyError('Select home subnets, XPN addresses and at least one allowed service')
+    if value['filterMode'] == 'firewall':
+        result['allDevices'] = True
+        result['targets'] = []
+    if value['enabled'] and value['filterMode'] == 'restricted' and (not result['sources'] or not (result['targets'] or result['allDevices']) or not (result['tcpPorts'] or result['udpPorts'] or result['allowPing'])):
+        raise PolicyError('Select source subnets, XPN addresses and at least one allowed service')
     return result
 
 
 def rules(value):
     p = policy(value)
     lines = ['flush chain inet xpn gateway_forward', 'flush chain inet xpn gateway_nat']
+    if p['allowClientPing']:
+        peers = 'iifname \"xpn0\" oifname \"xpn0\" ip saddr 10.77.0.2-10.77.0.254 ip daddr 10.77.0.2-10.77.0.254'
+        lines.append(f'add rule inet xpn gateway_forward {peers} icmp type echo-request ct state new,established accept')
+        lines.append(f'add rule inet xpn gateway_forward {peers} icmp type echo-reply ct state established accept')
+    if p['filterMode'] == 'firewall':
+        # This accepts only in XPN's chain. Independent iptables/nftables base
+        # chains can still drop packets, before SNAT changes their source.
+        inbound = 'iifname != "xpn0" oifname "xpn0" ip daddr 10.77.0.2-10.77.0.254 ct direction original'
+        reply = 'iifname "xpn0" oifname != "xpn0" ip saddr 10.77.0.2-10.77.0.254 ct direction reply ct status snat'
+        if p['enabled']:
+            lines.append(f'add rule inet xpn gateway_forward {inbound} ct state new,established,related accept')
+            lines.append(f'add rule inet xpn gateway_forward {reply} ct state established,related accept')
+            lines.append('add rule inet xpn gateway_nat iifname != "xpn0" oifname "xpn0" ip daddr 10.77.0.2-10.77.0.254 snat ip to 10.77.0.1')
+        else:
+            # Stop already-established incoming flows too, without blocking
+            # replies to connections initiated by full-tunnel clients.
+            lines.append(f'add rule inet xpn gateway_forward {inbound} drop')
+            lines.append(f'add rule inet xpn gateway_forward {reply} drop')
+        return '\n'.join(lines) + '\n'
     if not p['enabled']: return '\n'.join(lines) + '\n'
     def group(items): return '{ ' + ', '.join(map(str, items)) + ' }'
     targets = group(['10.77.0.2-10.77.0.254'] if p['allDevices'] else p['targets'])
@@ -98,7 +126,7 @@ def wireguard_interface(name):
     defaults = json.loads(subprocess.run(['/usr/sbin/ip', '-j', '-4', 'route', 'show', 'default'],
                                         text=True, capture_output=True, check=True, timeout=3).stdout)
     if any(route.get('dev') == name for route in defaults):
-        raise PolicyError('Use a dedicated home WireGuard interface, not the server default route')
+        raise PolicyError('Use a dedicated incoming WireGuard interface, not the server default route')
 
 
 class Gateway:
@@ -117,7 +145,7 @@ class Gateway:
         if type(data['revision']) is not int or data['revision'] != self.value['revision']:
             return {'error': 'Gateway settings changed; refresh before saving', 'status': 409}
         updated = policy(data['policy'])
-        if updated['enabled']:
+        if updated['enabled'] and updated['filterMode'] == 'restricted':
             self.check_interface(updated['interface'])
         if updated == self.value['policy']: return {**self.value, 'applied': True}
         new = {'revision': self.value['revision'] + 1, 'policy': updated}
